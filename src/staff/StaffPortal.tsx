@@ -1,16 +1,27 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type RefObject } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type RefObject } from 'react'
+import { AdminShell } from './AdminShell'
+import type { AdminRecords, AdminRoute } from './adminTypes'
 import type { StaffAccessClient, StaffAuthClient } from './types'
 import { useStaffSession } from './useStaffSession'
 
 type StaffPortalProps = {
   auth: StaffAuthClient
   access: StaffAccessClient
+  records?: AdminRecords
+  initialRoute?: AdminRoute
 }
 
-export function StaffPortal({ auth, access }: StaffPortalProps) {
+export function StaffPortal({ auth, access, records, initialRoute }: StaffPortalProps) {
   const session = useStaffSession(auth, access)
   const headingRef = useRef<HTMLHeadingElement>(null)
+  const [recordsDenied, setRecordsDenied] = useState(false)
+  const denyRecords = useCallback(() => setRecordsDenied(true), [])
   const phase = session.state.name
+  const wide = phase === 'accepted' && records && !recordsDenied
+
+  useEffect(() => {
+    setRecordsDenied(false)
+  }, [phase])
 
   useEffect(() => {
     headingRef.current?.focus()
@@ -18,10 +29,17 @@ export function StaffPortal({ auth, access }: StaffPortalProps) {
 
   return (
     <main className="shell">
-      <section className="card" aria-labelledby="portal-title">
+      <section className={wide ? 'card wide' : 'card'} aria-labelledby="portal-title">
         <p className="brand">Mawahib</p>
         {session.notice ? <p role="alert">{session.notice}</p> : null}
-        <PortalBody session={session} headingRef={headingRef} />
+        <PortalBody
+          session={session}
+          headingRef={headingRef}
+          records={records}
+          initialRoute={initialRoute}
+          recordsDenied={recordsDenied}
+          onAccessDenied={denyRecords}
+        />
       </section>
     </main>
   )
@@ -32,9 +50,17 @@ type SessionController = ReturnType<typeof useStaffSession>
 function PortalBody({
   session,
   headingRef,
+  records,
+  initialRoute,
+  recordsDenied,
+  onAccessDenied,
 }: {
   session: SessionController
   headingRef: RefObject<HTMLHeadingElement | null>
+  records?: AdminRecords
+  initialRoute?: AdminRoute
+  recordsDenied?: boolean
+  onAccessDenied?: () => void
 }) {
   const { state } = session
 
@@ -107,7 +133,33 @@ function PortalBody({
     )
   }
 
+  if (state.name === 'accepted' && recordsDenied) {
+    return (
+      <>
+        <h1 id="portal-title" ref={headingRef} tabIndex={-1}>
+          Staff access unavailable
+        </h1>
+        <p role="alert">Staff access is not active for this account. Contact your administrator.</p>
+        <div className="actions">
+          <button type="button" onClick={() => void session.signOut()}>
+            Sign out
+          </button>
+        </div>
+      </>
+    )
+  }
+
   if (state.name === 'accepted') {
+    if (records) {
+      return (
+        <AdminShell
+          records={records}
+          initialRoute={initialRoute}
+          onSignOut={() => void session.signOut()}
+          onAccessDenied={onAccessDenied}
+        />
+      )
+    }
     return (
       <>
         <h1 id="portal-title" ref={headingRef} tabIndex={-1}>

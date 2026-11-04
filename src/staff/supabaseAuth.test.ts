@@ -45,7 +45,7 @@ describe('createSupabaseStaffAuth', () => {
 
   it('reports sign-out failure without the provider message', async () => {
     const { client, auth } = createFakeClient()
-    auth.signOut.mockResolvedValueOnce({ error: { message: 'provider detail' } })
+    auth.signOut.mockResolvedValueOnce({ error: { message: 'provider detail' } } as never)
     const staff = createSupabaseStaffAuth(client)
     await expect(staff.signOut()).rejects.toThrow('sign-out-failed')
   })

@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { createAdminRecords } from './staff/adminApi'
 import { StaffPortal } from './staff/StaffPortal'
 import { createStaffAccessClient } from './staff/staffAccess'
 import { createBrowserStaffAuth } from './staff/supabaseAuth'
@@ -24,9 +25,14 @@ if (preview) {
       </StrictMode>,
     )
   } else {
+    const auth = createBrowserStaffAuth(url, key)
     createRoot(root).render(
       <StrictMode>
-        <StaffPortal auth={createBrowserStaffAuth(url, key)} access={createStaffAccessClient(api)} />
+        <StaffPortal
+          auth={auth}
+          access={createStaffAccessClient(api)}
+          records={createAdminRecords(api, async () => (await auth.getSession()).accessToken)}
+        />
       </StrictMode>,
     )
   }

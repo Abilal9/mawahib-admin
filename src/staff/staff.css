@@ -20,6 +20,10 @@ body {
   padding: 24px 16px;
 }
 
+.card.wide {
+  width: min(100%, 880px);
+}
+
 .card {
   width: min(100%, 440px);
   background: #ffffff;
@@ -120,6 +124,39 @@ button:disabled {
 button:focus-visible {
   outline: 2px solid #0e243a;
   outline-offset: 2px;
+}
+
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.records {
+  display: grid;
+  gap: 12px;
+}
+
+.record {
+  border: 1px solid #d5dee8;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.record h2 {
+  margin: 0 0 4px;
+  font-size: 1.05rem;
+}
+
+.record p {
+  margin-bottom: 4px;
+}
+
+@media (max-width: 640px) {
+  .card.wide {
+    padding: 20px 16px;
+  }
 }
 
 .preview-banner {
