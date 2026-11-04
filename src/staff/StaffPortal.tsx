@@ -1,0 +1,341 @@
+import { useEffect, useId, useRef, useState, type FormEvent, type RefObject } from 'react'
+import type { StaffAccessClient, StaffAuthClient } from './types'
+import { useStaffSession } from './useStaffSession'
+
+type StaffPortalProps = {
+  auth: StaffAuthClient
+  access: StaffAccessClient
+}
+
+export function StaffPortal({ auth, access }: StaffPortalProps) {
+  const session = useStaffSession(auth, access)
+  const headingRef = useRef<HTMLHeadingElement>(null)
+  const phase = session.state.name
+
+  useEffect(() => {
+    headingRef.current?.focus()
+  }, [phase])
+
+  return (
+    <main className="shell">
+      <section className="card" aria-labelledby="portal-title">
+        <p className="brand">Mawahib</p>
+        {session.notice ? <p role="alert">{session.notice}</p> : null}
+        <PortalBody session={session} headingRef={headingRef} />
+      </section>
+    </main>
+  )
+}
+
+type SessionController = ReturnType<typeof useStaffSession>
+
+function PortalBody({
+  session,
+  headingRef,
+}: {
+  session: SessionController
+  headingRef: RefObject<HTMLHeadingElement | null>
+}) {
+  const { state } = session
+
+  if (state.name === 'initializing' || state.name === 'checking') {
+    return (
+      <>
+        <h1 id="portal-title" ref={headingRef} tabIndex={-1}>
+          {state.name === 'initializing' ? 'Checking your session' : 'Checking staff access'}
+        </h1>
+        <p>Wait a moment.</p>
+      </>
+    )
+  }
+
+  if (state.name === 'signed-out') {
+    return <SignIn state={state} onSubmit={session.signIn} headingRef={headingRef} />
+  }
+
+  if (state.name === 'setup-required') {
+    return (
+      <>
+        <h1 id="portal-title" ref={headingRef} tabIndex={-1}>
+          Authenticator setup required
+        </h1>
+        <p>Add this account to an authenticator app. Verification does not activate staff access. An administrator still has to activate this account.</p>
+        {state.error ? <p role="alert">{state.error}</p> : null}
+        <div className="actions">
+          <button type="button" onClick={() => void session.beginEnrollment()} disabled={state.busy}>
+            {state.busy ? 'Setting up' : 'Set up authenticator'}
+          </button>
+          <button type="button" className="secondary" onClick={() => void session.signOut()}>
+            Sign out
+          </button>
+        </div>
+      </>
+    )
+  }
+
+  if (state.name === 'enrolling') {
+    return (
+      <CodeForm
+        heading="Authenticator setup"
+        headingRef={headingRef}
+        instructions="Enter this setup secret in your authenticator app, then enter the current 6-digit code. Verification does not activate staff access."
+        secret={state.secret}
+        qrCode={state.qrCode}
+        error={state.error}
+        busy={state.busy}
+        submitLabel="Verify code"
+        onSubmit={(code) => void session.verifyCode(code)}
+        onCancel={session.cancelEnrollment}
+        onSignOut={() => void session.signOut()}
+      />
+    )
+  }
+
+  if (state.name === 'challenge') {
+    return (
+      <CodeForm
+        heading="Authenticator code"
+        headingRef={headingRef}
+        instructions="Enter the current code from your authenticator app."
+        error={state.error}
+        busy={state.busy || state.challengeId === null}
+        submitLabel="Verify code"
+        onSubmit={(code) => void session.verifyCode(code)}
+        onRetry={state.challengeId === null ? () => void session.retryChallenge() : undefined}
+        onSignOut={() => void session.signOut()}
+      />
+    )
+  }
+
+  if (state.name === 'accepted') {
+    return (
+      <>
+        <h1 id="portal-title" ref={headingRef} tabIndex={-1}>
+          Staff session
+        </h1>
+        <p>Role: Operator</p>
+        <div className="actions">
+          <button type="button" onClick={() => void session.signOut()}>
+            Sign out
+          </button>
+        </div>
+      </>
+    )
+  }
+
+  if (state.name === 'denied') {
+    return (
+      <>
+        <h1 id="portal-title" ref={headingRef} tabIndex={-1}>
+          Staff access unavailable
+        </h1>
+        <p role="alert">Staff access is not active for this account. Contact your administrator.</p>
+        <div className="actions">
+          <button type="button" onClick={() => void session.signOut()}>
+            Sign out
+          </button>
+        </div>
+      </>
+    )
+  }
+
+  if (state.name === 'auth-unavailable') {
+    return (
+      <>
+        <h1 id="portal-title" ref={headingRef} tabIndex={-1}>
+          Authenticator service unavailable
+        </h1>
+        <p role="alert">The authenticator service is temporarily unavailable. Try again.</p>
+        <div className="actions">
+          <button type="button" onClick={() => void session.retryAuthentication()}>
+            Try again
+          </button>
+          <button type="button" className="secondary" onClick={() => void session.signOut()}>
+            Sign out
+          </button>
+        </div>
+      </>
+    )
+  }
+
+  if (state.name === 'unavailable') {
+    return (
+      <>
+        <h1 id="portal-title" ref={headingRef} tabIndex={-1}>
+          Staff service unavailable
+        </h1>
+        <p role="alert">The staff service is temporarily unavailable. Try again.</p>
+        <div className="actions">
+          <button type="button" onClick={() => void session.retryStaffCheck()}>
+            Try again
+          </button>
+          <button type="button" className="secondary" onClick={() => void session.signOut()}>
+            Sign out
+          </button>
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <h1 id="portal-title" ref={headingRef} tabIndex={-1}>
+        Administrator help required
+      </h1>
+      <p role="alert">This account’s authenticator setup needs an administrator. Contact your administrator.</p>
+      <div className="actions">
+        <button type="button" onClick={() => void session.signOut()}>
+          Sign out
+        </button>
+      </div>
+    </>
+  )
+}
+
+function SignIn({
+  state,
+  onSubmit,
+  headingRef,
+}: {
+  state: { error: string | null; busy: boolean }
+  onSubmit: (email: string, password: string) => Promise<void>
+  headingRef: RefObject<HTMLHeadingElement | null>
+}) {
+  const emailId = useId()
+  const passwordId = useId()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    void onSubmit(email, password)
+  }
+
+  return (
+    <>
+      <h1 id="portal-title" ref={headingRef} tabIndex={-1}>
+        Staff sign in
+      </h1>
+      <p>Use your staff email and password.</p>
+      <form onSubmit={submit}>
+        <label htmlFor={emailId}>Email</label>
+        <input
+          id={emailId}
+          name="email"
+          type="email"
+          autoComplete="username"
+          inputMode="email"
+          required
+          value={email}
+          disabled={state.busy}
+          onChange={(event) => setEmail(event.target.value)}
+        />
+        <label htmlFor={passwordId}>Password</label>
+        <input
+          id={passwordId}
+          name="password"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={password}
+          disabled={state.busy}
+          onChange={(event) => setPassword(event.target.value)}
+        />
+        {state.error ? <p role="alert">{state.error}</p> : null}
+        <div className="actions">
+          <button type="submit" disabled={state.busy}>
+            {state.busy ? 'Signing in' : 'Sign in'}
+          </button>
+        </div>
+      </form>
+    </>
+  )
+}
+
+function CodeForm({
+  heading,
+  headingRef,
+  instructions,
+  secret,
+  qrCode,
+  error,
+  busy,
+  submitLabel,
+  onSubmit,
+  onCancel,
+  onRetry,
+  onSignOut,
+}: {
+  heading: string
+  headingRef: RefObject<HTMLHeadingElement | null>
+  instructions: string
+  secret?: string
+  qrCode?: string | null
+  error: string | null
+  busy: boolean
+  submitLabel: string
+  onSubmit: (code: string) => void
+  onCancel?: () => void
+  onRetry?: () => void
+  onSignOut: () => void
+}) {
+  const secretId = useId()
+  const codeId = useId()
+  const [code, setCode] = useState('')
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    onSubmit(code)
+  }
+
+  return (
+    <>
+      <h1 id="portal-title" ref={headingRef} tabIndex={-1}>
+        {heading}
+      </h1>
+      <p>{instructions}</p>
+      <form onSubmit={submit}>
+        {qrCode ? <img className="setup-qr" alt="Authenticator setup QR code" src={qrCode} /> : null}
+        {secret ? (
+          <>
+            <label htmlFor={secretId}>Setup secret</label>
+            <input id={secretId} readOnly value={secret} spellCheck={false} autoComplete="off" />
+          </>
+        ) : null}
+        <label htmlFor={codeId}>6-digit code</label>
+        <input
+          id={codeId}
+          name="code"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          pattern="[0-9]{6}"
+          minLength={6}
+          maxLength={6}
+          required
+          value={code}
+          disabled={busy}
+          onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+        />
+        {error ? <p role="alert">{error}</p> : null}
+        <div className="actions">
+          <button type="submit" disabled={busy || code.length !== 6}>
+            {busy ? 'Checking code' : submitLabel}
+          </button>
+          {onRetry ? (
+            <button type="button" className="secondary" onClick={onRetry}>
+              Try again
+            </button>
+          ) : null}
+          {onCancel ? (
+            <button type="button" className="secondary" onClick={onCancel} disabled={busy}>
+              Cancel setup
+            </button>
+          ) : null}
+          <button type="button" className="secondary" onClick={onSignOut}>
+            Sign out
+          </button>
+        </div>
+      </form>
+    </>
+  )
+}
