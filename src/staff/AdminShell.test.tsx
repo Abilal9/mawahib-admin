@@ -2,7 +2,8 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AdminShell } from './AdminShell'
-import type { AdminRecords, StaffDispute, StaffUserSummary } from './adminTypes'
+import type { AdminRecords, OperationsOverview, StaffDispute, StaffUserSummary } from './adminTypes'
+import { OPERATIONS_POLL_MS } from './OperationsView'
 
 const user: StaffUserSummary = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -61,7 +62,31 @@ function records(partial: Partial<AdminRecords> = {}): AdminRecords {
     async dispute() {
       return { ok: true, data: dispute }
     },
+    async operations() {
+      return { ok: true, data: operationsOverview() }
+    },
     ...partial,
+  }
+}
+
+function operationsOverview(patch: Partial<OperationsOverview['cards'][number]>[] = []): OperationsOverview {
+  const titles = ['API deployment', 'Database connectivity', 'Supabase project', 'Database backup', 'Production monitor'] as const
+  const ids = ['railway', 'database', 'supabase_project', 'supabase_backup', 'uptime'] as const
+  return {
+    generatedAt: '2026-11-05T10:00:00.000Z',
+    cards: ids.map((id, index) => ({
+      id,
+      title: titles[index],
+      state: 'up',
+      stale: false,
+      fetchedAt: '2026-11-05T09:59:00.000Z',
+      eventAt: '2026-11-05T09:00:00.000Z',
+      summary: `${titles[index]} synthetic reading`,
+      details: [],
+      incidents: [],
+      dashboardUrl: 'https://railway.com/dashboard',
+      ...patch[index],
+    })),
   }
 }
 
@@ -380,5 +405,119 @@ describe('AdminShell', () => {
       resolveLate({ ok: true, data: { items: [user], nextCursor: null } })
     })
     expect(screen.queryByText('Ada Preview')).toBeNull()
+  })
+
+  it('labels unknown and down separately, and keeps stale data from looking current', async () => {
+    render(
+      <AdminShell
+        records={records({
+          async operations() {
+            return {
+              ok: true,
+              data: operationsOverview([
+                { state: 'unknown', summary: 'No deployment was returned for the configured service.' },
+                { state: 'up', stale: true, summary: 'The application database accepted a connectivity check.' },
+                { state: 'down', summary: 'Supabase reports this project as ACTIVE_UNHEALTHY.' },
+                { state: 'not_configured', fetchedAt: null, summary: 'Not configured.' },
+                {
+                  state: 'down',
+                  summary: 'UptimeRobot reports this monitor as DOWN.',
+                  incidents: [{ at: '2026-11-05T09:40:00.000Z', label: 'DOWN' }],
+                  dashboardUrl: 'javascript:alert(1)',
+                },
+              ]),
+            }
+          },
+        })}
+        initialRoute={{ name: 'operations' }}
+        onSignOut={() => undefined}
+      />,
+    )
+    expect(await screen.findByRole('heading', { name: 'Operations' })).toBeTruthy()
+    expect(screen.getByText('Unknown')).toBeTruthy()
+    expect(screen.getAllByText('Down')).toHaveLength(2)
+    expect(screen.getByText('Stale')).toBeTruthy()
+    expect(screen.getByText('Last known state: Up. This reading is not current.')).toBeTruthy()
+    expect(screen.getByText('Not configured')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Incidents on the first page' })).toBeTruthy()
+    expect(screen.getAllByRole('link', { name: 'Open the provider dashboard' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('link').every((link) => link.getAttribute('href')?.startsWith('https://'))).toBe(true)
+    expect(OPERATIONS_POLL_MS).toBe(60_000)
+  })
+
+  it('clears an operations reading when access is denied and ignores the late payload', async () => {
+    let resolveLate: (value: Awaited<ReturnType<AdminRecords['operations']>>) => void = () => undefined
+    function Session() {
+      const [denied, setDenied] = useState(false)
+      if (denied) return <p>Staff access is not active for this account. Contact your administrator.</p>
+      return (
+        <AdminShell
+          records={records({
+            async operations() {
+              return new Promise((resolve) => {
+                resolveLate = resolve
+              })
+            },
+          })}
+          initialRoute={{ name: 'operations' }}
+          onSignOut={() => undefined}
+          onAccessDenied={() => setDenied(true)}
+        />
+      )
+    }
+    render(<Session />)
+    expect(await screen.findByRole('heading', { name: 'Loading records' })).toBeTruthy()
+    await act(async () => {
+      resolveLate({ ok: false, kind: 'denied' })
+    })
+    expect(screen.getByText('Staff access is not active for this account. Contact your administrator.')).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Operations' })).toBeNull()
+  })
+
+  it('ignores an operations response after the screen has changed', async () => {
+    let resolveLate: (value: Awaited<ReturnType<AdminRecords['operations']>>) => void = () => undefined
+    render(
+      <AdminShell
+        records={records({
+          async operations() {
+            return new Promise((resolve) => {
+              resolveLate = resolve
+            })
+          },
+        })}
+        initialRoute={{ name: 'operations' }}
+        onSignOut={() => undefined}
+      />,
+    )
+    expect(await screen.findByRole('heading', { name: 'Loading records' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Users' }))
+    expect(await screen.findByText('Search by email, username, or account id.')).toBeTruthy()
+    await act(async () => {
+      resolveLate({ ok: true, data: operationsOverview([{ summary: 'Late railway reading' }]) })
+    })
+    expect(screen.queryByText('Late railway reading')).toBeNull()
+  })
+
+  it('asks the server again from the operations summary', async () => {
+    let calls = 0
+    render(
+      <AdminShell
+        records={records({
+          async operations() {
+            calls += 1
+            return {
+              ok: true,
+              data: operationsOverview([{ summary: calls === 1 ? 'First reading' : 'Second reading' }]),
+            }
+          },
+        })}
+        initialRoute={{ name: 'operations' }}
+        onSignOut={() => undefined}
+      />,
+    )
+    expect(await screen.findByText('First reading')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh summary' }))
+    expect(await screen.findByText('Second reading')).toBeTruthy()
+    expect(calls).toBe(2)
   })
 })

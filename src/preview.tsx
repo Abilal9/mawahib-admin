@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import type { AdminRecords, AdminRoute, StaffDispute, StaffUserDetail, StaffUserSummary } from './staff/adminTypes'
+import type { AdminRecords, AdminRoute, OperationsOverview, StaffDispute, StaffUserDetail, StaffUserSummary } from './staff/adminTypes'
 import { StaffPortal } from './staff/StaffPortal'
 import type { StaffAccessClient, StaffAuthClient } from './staff/types'
 
@@ -43,6 +43,90 @@ const previewDispute: StaffDispute = {
   payment: { amount: '150.00', currency: 'SAR', status: 'succeeded', simulated: true },
 }
 
+function previewOperations(mode: string): OperationsOverview {
+  const fetchedAt = '2026-11-05T09:00:00.000Z'
+  const base = {
+    stale: false,
+    fetchedAt,
+    eventAt: '2026-11-05T08:30:00.000Z',
+    incidents: [],
+    details: [] as { label: string; value: string }[],
+  }
+  const cards: OperationsOverview['cards'] = [
+    {
+      ...base,
+      id: 'railway',
+      title: 'API deployment',
+      state: mode === 'operations-unavailable' ? 'unavailable' : 'up',
+      summary:
+        mode === 'operations-unavailable'
+          ? 'The provider did not respond in time. This is not a confirmed outage.'
+          : 'Railway reports a successful deployment in the recent list. A successful record is deployment evidence, not continuous application-health proof.',
+      details: [
+        { label: 'Service', value: '11111111-1111-4111-8111-111111111111' },
+        { label: 'Release', value: 'abc1234' },
+      ],
+      dashboardUrl: 'https://railway.com/dashboard',
+    },
+    {
+      ...base,
+      id: 'database',
+      title: 'Database connectivity',
+      state: 'up',
+      stale: mode === 'operations-stale',
+      fetchedAt: mode === 'operations-stale' ? '2026-11-05T08:00:00.000Z' : fetchedAt,
+      summary: 'The application database accepted a connectivity check.',
+      details: [{ label: 'Check', value: 'SELECT 1' }],
+      dashboardUrl: 'https://supabase.com/dashboard',
+    },
+    {
+      ...base,
+      id: 'supabase_project',
+      title: 'Supabase project',
+      state: 'up',
+      summary: 'Supabase reports this project as ACTIVE_HEALTHY.',
+      details: [{ label: 'Project', value: 'abcdefghijklmnopqrst' }],
+      dashboardUrl: 'https://supabase.com/dashboard/project/abcdefghijklmnopqrst',
+    },
+    {
+      ...base,
+      id: 'supabase_backup',
+      title: 'Database backup',
+      state: 'up',
+      summary: 'The latest returned backup is COMPLETED. This does not prove it can be restored.',
+      details: [{ label: 'Backup status', value: 'COMPLETED' }],
+      dashboardUrl: 'https://supabase.com/dashboard/project/abcdefghijklmnopqrst',
+    },
+    {
+      ...base,
+      id: 'uptime',
+      title: 'Production monitor',
+      state: mode === 'operations-unconfigured' ? 'not_configured' : mode === 'operations-incident' ? 'down' : 'up',
+      summary:
+        mode === 'operations-unconfigured'
+          ? 'Not configured. Set OPS_UPTIMEROBOT_READ_TOKEN and OPS_UPTIMEROBOT_MONITOR_ID on the server.'
+          : mode === 'operations-incident'
+            ? 'UptimeRobot reports this monitor as DOWN. This is a periodic observation, not a deployment check.'
+            : 'UptimeRobot reports this monitor as UP. This is a periodic observation, not a deployment check.',
+      fetchedAt: mode === 'operations-unconfigured' ? null : fetchedAt,
+      eventAt: mode === 'operations-incident' ? '2026-11-05T09:40:00.000Z' : null,
+      details:
+        mode === 'operations-unconfigured'
+          ? []
+          : [
+              { label: 'Monitor', value: '794581023' },
+              { label: 'Last check', value: 'Not exposed by the API' },
+            ],
+      incidents:
+        mode === 'operations-incident'
+          ? [{ at: '2026-11-05T09:40:00.000Z', label: 'DOWN' }]
+          : [],
+      dashboardUrl: 'https://dashboard.uptimerobot.com/',
+    },
+  ]
+  return { generatedAt: '2026-11-05T10:00:00.000Z', cards }
+}
+
 const previewRoot: { current: Root | null } = { current: null }
 
 export function mountPreview(element: HTMLElement, mode: string) {
@@ -80,13 +164,13 @@ function previewAuth(mode: string): StaffAuthClient {
       active = false
     },
     async assuranceLevel() {
-      if (mode === 'denied' || mode === 'unavailable' || isStaffPreview(mode)) return 'aal2'
+      if (mode === 'denied' || mode === 'operations-denied' || mode === 'unavailable' || isStaffPreview(mode)) return 'aal2'
       return 'aal1'
     },
     async listFactors() {
       if (mode === 'setup') return []
       if (mode === 'operator-help') return [{ id: 'phone-1', factorType: 'phone', status: 'verified' }]
-      if (mode === 'challenge' || mode === 'denied' || mode === 'unavailable' || isStaffPreview(mode)) {
+      if (mode === 'challenge' || mode === 'denied' || mode === 'operations-denied' || mode === 'unavailable' || isStaffPreview(mode)) {
         return [{ id: 'totp-1', factorType: 'totp', status: 'verified' }]
       }
       return []
@@ -125,6 +209,11 @@ function isStaffPreview(mode: string): boolean {
     'user-conflict',
     'user-action-error',
     'audit',
+    'operations',
+    'operations-unavailable',
+    'operations-stale',
+    'operations-unconfigured',
+    'operations-incident',
   ].includes(mode)
 }
 
@@ -148,6 +237,7 @@ function previewRoute(mode: string): AdminRoute | undefined {
     return { name: 'disputes', cursor: null }
   }
   if (mode === 'dispute') return { name: 'dispute', id: previewDisputeId }
+  if (mode.startsWith('operations') && mode !== 'operations-denied') return { name: 'operations' }
   if (mode === 'accepted') return { name: 'home' }
   return undefined
 }
@@ -217,6 +307,10 @@ function previewRecords(mode: string): AdminRecords {
     },
     async dispute() {
       return { ok: true, data: previewDispute }
+    },
+    async operations() {
+      if (mode === 'operations-denied') return { ok: false, kind: 'denied' }
+      return { ok: true, data: previewOperations(mode) }
     },
   }
 }

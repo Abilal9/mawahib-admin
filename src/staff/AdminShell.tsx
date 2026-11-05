@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
-import type { AccountActionRecord, AdminRecords, AdminResult, AdminRoute, StaffDispute, StaffUserDetail, StaffUserSummary } from './adminTypes'
+import type { AccountActionRecord, AdminRecords, AdminResult, AdminRoute, OperationsOverview, StaffDispute, StaffUserDetail, StaffUserSummary } from './adminTypes'
+import { OPERATIONS_POLL_MS, OperationsView } from './OperationsView'
 
 type View =
   | { name: 'loading' }
@@ -8,6 +9,7 @@ type View =
   | { name: 'user'; user: StaffUserDetail }
   | { name: 'disputes'; items: StaffDispute[]; nextCursor: string | null }
   | { name: 'dispute'; dispute: StaffDispute }
+  | { name: 'operations'; overview: OperationsOverview }
   | { name: 'empty'; message: string }
   | { name: 'denied' }
   | { name: 'expired' }
@@ -32,13 +34,15 @@ export function AdminShell({
   const [route, setRoute] = useState<AdminRoute>(initialRoute)
   const [view, setView] = useState<View>({ name: 'loading' })
   const [query, setQuery] = useState(initialRoute.name === 'users' ? initialRoute.query : '')
+  const [reload, setReload] = useState(0)
+  const requestId = useRef(0)
   const searchId = useId()
 
   useEffect(() => {
-    let current = true
+    const id = ++requestId.current
     setView({ name: 'loading' })
     void load(records, route).then((next) => {
-      if (!current) return
+      if (id !== requestId.current) return
       if (next.name === 'denied' && onAccessDenied) {
         onAccessDenied()
         return
@@ -46,8 +50,24 @@ export function AdminShell({
       setView(next)
     })
     return () => {
-      current = false
+      requestId.current += 1
     }
+  }, [onAccessDenied, records, route, reload])
+
+  useEffect(() => {
+    if (route.name !== 'operations') return
+    const timer = setInterval(() => {
+      const id = ++requestId.current
+      void load(records, route).then((next) => {
+        if (id !== requestId.current) return
+        if (next.name === 'denied' && onAccessDenied) {
+          onAccessDenied()
+          return
+        }
+        setView(next)
+      })
+    }, OPERATIONS_POLL_MS)
+    return () => clearInterval(timer)
   }, [onAccessDenied, records, route])
 
   function open(next: AdminRoute) {
@@ -67,6 +87,9 @@ export function AdminShell({
         </button>
         <button type="button" onClick={() => open({ name: 'disputes', cursor: null })}>
           Disputes
+        </button>
+        <button type="button" onClick={() => open({ name: 'operations' })}>
+          Operations
         </button>
         <button type="button" className="secondary" onClick={onSignOut}>
           Sign out
@@ -182,6 +205,9 @@ export function AdminShell({
         </>
       ) : null}
       {view.name === 'dispute' ? <DisputeDetail dispute={view.dispute} /> : null}
+      {view.name === 'operations' ? (
+        <OperationsView overview={view.overview} onRefresh={() => setReload((value) => value + 1)} />
+      ) : null}
     </>
   )
 }
@@ -432,6 +458,9 @@ async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
       items: page.items,
       nextCursor: page.nextCursor,
     }))
+  }
+  if (route.name === 'operations') {
+    return fromOne(await records.operations(), (overview) => ({ name: 'operations', overview }))
   }
   return fromOne(await records.dispute(route.id), (dispute) => ({ name: 'dispute', dispute }))
 }

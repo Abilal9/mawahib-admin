@@ -168,6 +168,27 @@ button:focus-visible {
   margin-bottom: 4px;
 }
 
+.ops-state {
+  font-weight: 700;
+}
+
+.ops-state[data-state='up'] {
+  color: #0b6b3a;
+}
+
+.ops-state[data-state='down'] {
+  color: #9d1234;
+}
+
+.ops-state[data-state='unknown'],
+.ops-state[data-state='unavailable'],
+.ops-state[data-state='not_configured'],
+.ops-state[data-state='not_available'],
+.ops-state[data-state='stale'],
+.ops-state[data-state='degraded'] {
+  color: #6a4b16;
+}
+
 @media (max-width: 640px) {
   .card.wide {
     padding: 20px 16px;

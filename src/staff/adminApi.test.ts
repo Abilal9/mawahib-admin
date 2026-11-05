@@ -26,6 +26,11 @@ describe('createAdminRecords', () => {
       expect.objectContaining({ credentials: 'omit' }),
     )
     expect(JSON.stringify(fetchImpl.mock.calls)).not.toContain('/auth/bootstrap')
+    await records.operations()
+    expect(fetchImpl).toHaveBeenLastCalledWith(
+      'https://api.example.test/api/v1/admin/operations',
+      expect.objectContaining({ credentials: 'omit' }),
+    )
     vi.unstubAllGlobals()
   })
 

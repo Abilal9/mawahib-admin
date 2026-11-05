@@ -1,4 +1,4 @@
-import type { AccountStatusChange, AdminRecords, AdminResult, StaffUserDetail } from './adminTypes'
+import type { AccountStatusChange, AdminRecords, AdminResult, OperationsOverview, StaffUserDetail } from './adminTypes'
 
 export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Promise<string | null>): AdminRecords {
   const base = apiBaseUrl.replace(/\/$/, '')
@@ -67,6 +67,9 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
     },
     dispute(id) {
       return get(`/admin/disputes/${encodeURIComponent(id)}`)
+    },
+    operations() {
+      return get<OperationsOverview>('/admin/operations')
     },
   }
 }

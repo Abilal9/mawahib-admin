@@ -76,6 +76,7 @@ export type AdminRecords = {
   accountActions(targetAccountId: string): Promise<AdminResult<AdminPage<AccountActionRecord>>>
   disputes(cursor: string | null): Promise<AdminResult<AdminPage<StaffDispute>>>
   dispute(id: string): Promise<AdminResult<StaffDispute>>
+  operations(): Promise<AdminResult<OperationsOverview>>
 }
 
 export type AdminRoute =
@@ -84,3 +85,24 @@ export type AdminRoute =
   | { name: 'user'; id: string }
   | { name: 'disputes'; cursor: string | null }
   | { name: 'dispute'; id: string }
+  | { name: 'operations' }
+
+export type OpsState = 'up' | 'down' | 'degraded' | 'paused' | 'unknown' | 'unavailable' | 'not_configured' | 'not_available'
+
+export type OperationsCard = {
+  id: 'railway' | 'database' | 'supabase_project' | 'supabase_backup' | 'uptime'
+  title: string
+  state: OpsState
+  stale: boolean
+  fetchedAt: string | null
+  eventAt: string | null
+  summary: string
+  details: { label: string; value: string }[]
+  incidents: { at: string | null; label: string }[]
+  dashboardUrl: string | null
+}
+
+export type OperationsOverview = {
+  generatedAt: string
+  cards: OperationsCard[]
+}
