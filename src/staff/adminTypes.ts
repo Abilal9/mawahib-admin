@@ -16,6 +16,7 @@ export type StaffUserDetail = StaffUserSummary & {
   clientEngagementCount: number
   providerEngagementCount: number
   simulatedPaymentCount: number
+  statusAction: 'suspend' | 'restore' | 'deleted' | 'ineligible'
 }
 
 export type StaffDisputePayment = {
@@ -44,13 +45,35 @@ export type AdminPage<T> = {
   nextCursor: string | null
 }
 
+export type AccountActionRecord = {
+  id: string
+  action: 'account_suspended' | 'account_restored'
+  actorSubjectId: string | null
+  targetAccountId: string | null
+  targetDisplayName: string | null
+  previousStatus: string | null
+  resultingStatus: string | null
+  reason: string | null
+  createdAt: string
+}
+
+export type AccountStatusChange = {
+  outcome: 'changed' | 'unchanged' | 'observed'
+  accountStatus: 'ACTIVE' | 'SUSPENDED'
+}
+
 export type AdminResult<T> =
   | { ok: true; data: T }
-  | { ok: false; kind: 'denied' | 'expired' | 'unavailable' | 'not-found' }
+  | { ok: false; kind: 'denied' | 'expired' | 'unavailable' | 'not-found' | 'conflict' | 'ineligible' | 'uncertain' }
 
 export type AdminRecords = {
   searchUsers(query: string, cursor: string | null): Promise<AdminResult<AdminPage<StaffUserSummary>>>
   user(id: string): Promise<AdminResult<StaffUserDetail>>
+  setAccountStatus(
+    id: string,
+    input: { status: 'ACTIVE' | 'SUSPENDED'; expectedStatus: 'ACTIVE' | 'SUSPENDED'; reason: string },
+  ): Promise<AdminResult<AccountStatusChange>>
+  accountActions(targetAccountId: string): Promise<AdminResult<AdminPage<AccountActionRecord>>>
   disputes(cursor: string | null): Promise<AdminResult<AdminPage<StaffDispute>>>
   dispute(id: string): Promise<AdminResult<StaffDispute>>
 }

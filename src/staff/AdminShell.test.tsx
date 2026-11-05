@@ -45,8 +45,15 @@ function records(partial: Partial<AdminRecords> = {}): AdminRecords {
           clientEngagementCount: 1,
           providerEngagementCount: 1,
           simulatedPaymentCount: 1,
+          statusAction: 'suspend',
         },
       }
+    },
+    async setAccountStatus() {
+      return { ok: true, data: { outcome: 'changed', accountStatus: 'SUSPENDED' as const } }
+    },
+    async accountActions() {
+      return { ok: true, data: { items: [], nextCursor: null } }
     },
     async disputes() {
       return { ok: true, data: { items: [dispute], nextCursor: null } }
@@ -201,6 +208,129 @@ describe('AdminShell', () => {
     expect(screen.getByText('Staff access is not active for this account. Contact your administrator.')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Users' })).toBeNull()
     expect(screen.queryByText('Synthetic dispute note')).toBeNull()
+  })
+
+  it('confirms a suspension and ignores a second click while it is saving', async () => {
+    let calls = 0
+    let release: () => void = () => undefined
+    render(
+      <AdminShell
+        records={records({
+          async setAccountStatus() {
+            calls += 1
+            await new Promise<void>((resolve) => {
+              release = resolve
+            })
+            return { ok: true, data: { outcome: 'changed', accountStatus: 'SUSPENDED' } }
+          },
+          async user() {
+            calls += 0
+            const suspended = calls > 0
+            return {
+              ok: true,
+              data: {
+                ...user,
+                accountStatus: suspended ? 'SUSPENDED' : 'ACTIVE',
+                statusAction: suspended ? 'restore' : 'suspend',
+                followersCount: 1,
+                followingCount: 1,
+                postsCount: 1,
+                clientEngagementCount: 1,
+                providerEngagementCount: 1,
+                simulatedPaymentCount: 1,
+              },
+            }
+          },
+        })}
+        initialRoute={{ name: 'user', id: user.id }}
+        onSignOut={() => undefined}
+      />,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Suspend' }))
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  Review hold  ' } })
+    const confirm = screen.getByRole('button', { name: 'Confirm suspend' })
+    confirm.click()
+    confirm.click()
+    expect(calls).toBe(1)
+    await act(async () => release())
+    expect(await screen.findByText('The account is now suspended.')).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'Restore' })).toBeTruthy()
+  })
+
+  it('does not attribute a reconciled status to this request', async () => {
+    render(
+      <AdminShell
+        records={records({
+          async setAccountStatus() {
+            return { ok: true, data: { outcome: 'observed', accountStatus: 'SUSPENDED' } }
+          },
+        })}
+        initialRoute={{ name: 'user', id: user.id }}
+        startConfirming
+        onSignOut={() => undefined}
+      />,
+    )
+    fireEvent.change(await screen.findByLabelText('Reason'), { target: { value: 'Review hold' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm suspend' }))
+    expect(await screen.findByText('The account is currently suspended.')).toBeTruthy()
+    expect(screen.queryByText('The account is now suspended.')).toBeNull()
+  })
+
+  it('shows a conflict and an unknown result without treating them as success', async () => {
+    const conflict = render(
+      <AdminShell
+        records={records({
+          async setAccountStatus() {
+            return { ok: false, kind: 'conflict' }
+          },
+        })}
+        initialRoute={{ name: 'user', id: user.id }}
+        startConfirming
+        onSignOut={() => undefined}
+      />,
+    )
+    fireEvent.change(await screen.findByLabelText('Reason'), { target: { value: 'Review hold' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm suspend' }))
+    expect(await screen.findByText('This account changed. Refresh it before trying again.')).toBeTruthy()
+    conflict.unmount()
+
+    render(
+      <AdminShell
+        records={records({
+          async setAccountStatus() {
+            return { ok: false, kind: 'uncertain' }
+          },
+        })}
+        initialRoute={{ name: 'user', id: user.id }}
+        startConfirming
+        onSignOut={() => undefined}
+      />,
+    )
+    fireEvent.change(await screen.findByLabelText('Reason'), { target: { value: 'Review hold' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm suspend' }))
+    expect(await screen.findByText('The result is unknown. Refresh the account before trying again.')).toBeTruthy()
+  })
+
+  it('clears the account when action history is denied', async () => {
+    function Session() {
+      const [denied, setDenied] = useState(false)
+      if (denied) return <p>Staff access is not active for this account. Contact your administrator.</p>
+      return (
+        <AdminShell
+          records={records({
+            async accountActions() {
+              return { ok: false, kind: 'denied' }
+            },
+          })}
+          initialRoute={{ name: 'user', id: user.id }}
+          onSignOut={() => undefined}
+          onAccessDenied={() => setDenied(true)}
+        />
+      )
+    }
+    render(<Session />)
+    expect(await screen.findByText('Staff access is not active for this account. Contact your administrator.')).toBeTruthy()
+    expect(screen.queryByText('ada.preview@example.com')).toBeNull()
   })
 
   it('renders a dispute note as text', async () => {

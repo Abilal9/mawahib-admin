@@ -26,6 +26,7 @@ const previewUserDetail: StaffUserDetail = {
   clientEngagementCount: 1,
   providerEngagementCount: 3,
   simulatedPaymentCount: 1,
+  statusAction: 'suspend',
 }
 
 const previewDispute: StaffDispute = {
@@ -54,6 +55,8 @@ export function mountPreview(element: HTMLElement, mode: string) {
         access={previewAccess(mode)}
         records={previewRecords(mode)}
         initialRoute={previewRoute(mode)}
+        initialNotice={previewNotice(mode)}
+        startConfirming={mode === 'user-confirm'}
       />
     </StrictMode>,
   )
@@ -114,19 +117,47 @@ function isStaffPreview(mode: string): boolean {
     'users-error',
     'disputes-empty',
     'disputes-error',
+    'user-active',
+    'user-suspended',
+    'user-confirm',
+    'user-success',
+    'user-unchanged',
+    'user-conflict',
+    'user-action-error',
+    'audit',
   ].includes(mode)
 }
 
 function previewRoute(mode: string): AdminRoute | undefined {
   if (mode === 'users' || mode === 'users-error') return { name: 'users', query: 'ada', cursor: null }
   if (mode === 'users-empty') return { name: 'users', query: 'nobody', cursor: null }
-  if (mode === 'user') return { name: 'user', id: previewUserId }
+  if (
+    mode === 'user' ||
+    mode === 'user-active' ||
+    mode === 'user-suspended' ||
+    mode === 'user-confirm' ||
+    mode === 'user-success' ||
+    mode === 'user-unchanged' ||
+    mode === 'user-conflict' ||
+    mode === 'user-action-error' ||
+    mode === 'audit'
+  ) {
+    return { name: 'user', id: previewUserId }
+  }
   if (mode === 'disputes' || mode === 'disputes-empty' || mode === 'disputes-error') {
     return { name: 'disputes', cursor: null }
   }
   if (mode === 'dispute') return { name: 'dispute', id: previewDisputeId }
   if (mode === 'accepted') return { name: 'home' }
   return undefined
+}
+
+function previewNotice(mode: string): string | null {
+  if (mode === 'user-success') return 'The account is now suspended.'
+  if (mode === 'user-unchanged') return 'This account is already suspended.'
+  if (mode === 'user-conflict') return 'This account changed. Refresh it before trying again.'
+  if (mode === 'user-action-error') return 'The result is unknown. Refresh the account before trying again.'
+  return null
 }
 
 function previewRecords(mode: string): AdminRecords {
@@ -141,7 +172,43 @@ function previewRecords(mode: string): AdminRecords {
       return { ok: true, data: { items: [previewUser], nextCursor: null } }
     },
     async user() {
-      return { ok: true, data: previewUserDetail }
+      const suspended = mode === 'user-suspended' || mode === 'user-success' || mode === 'user-unchanged'
+      return {
+        ok: true,
+        data: {
+          ...previewUserDetail,
+          accountStatus: suspended ? 'SUSPENDED' : 'ACTIVE',
+          statusAction: suspended ? 'restore' : 'suspend',
+        },
+      }
+    },
+    async setAccountStatus() {
+      if (mode === 'user-conflict') return { ok: false, kind: 'conflict' }
+      if (mode === 'user-action-error') return { ok: false, kind: 'uncertain' }
+      if (mode === 'user-unchanged') return { ok: true, data: { outcome: 'unchanged', accountStatus: 'SUSPENDED' } }
+      return { ok: true, data: { outcome: 'changed', accountStatus: 'SUSPENDED' } }
+    },
+    async accountActions() {
+      if (mode !== 'audit' && mode !== 'user-success') return { ok: true, data: { items: [], nextCursor: null } }
+      return {
+        ok: true,
+        data: {
+          items: [
+            {
+              id: '55555555-5555-4555-8555-555555555555',
+              action: 'account_suspended' as const,
+              actorSubjectId: '66666666-6666-4666-8666-666666666666',
+              targetAccountId: previewUserId,
+              targetDisplayName: 'Ada Preview',
+              previousStatus: 'ACTIVE',
+              resultingStatus: 'SUSPENDED',
+              reason: 'Synthetic review hold',
+              createdAt: '2026-03-01T00:00:00.000Z',
+            },
+          ],
+          nextCursor: null,
+        },
+      }
     },
     async disputes() {
       if (disputesFailed) return { ok: false, kind: 'unavailable' }

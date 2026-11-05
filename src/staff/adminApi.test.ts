@@ -29,6 +29,41 @@ describe('createAdminRecords', () => {
     vi.unstubAllGlobals()
   })
 
+  it('reports only the current status after a lost response', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(json(200, { accountStatus: 'SUSPENDED', statusAction: 'restore' }))
+    vi.stubGlobal('fetch', fetchImpl)
+    const records = createAdminRecords('https://api.example.test/api/v1', async () => 'token')
+    await expect(
+      records.setAccountStatus('11111111-1111-4111-8111-111111111111', {
+        status: 'SUSPENDED',
+        expectedStatus: 'ACTIVE',
+        reason: 'Review hold',
+      }),
+    ).resolves.toEqual({ ok: true, data: { outcome: 'observed', accountStatus: 'SUSPENDED' } })
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    vi.unstubAllGlobals()
+  })
+
+  it('does not hide a denied reconciliation as an unknown result', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(json(403, { code: 'STAFF_ACCESS_DENIED' }))
+    vi.stubGlobal('fetch', fetchImpl)
+    const records = createAdminRecords('https://api.example.test/api/v1', async () => 'token')
+    await expect(
+      records.setAccountStatus('11111111-1111-4111-8111-111111111111', {
+        status: 'SUSPENDED',
+        expectedStatus: 'ACTIVE',
+        reason: 'Review hold',
+      }),
+    ).resolves.toEqual({ ok: false, kind: 'denied' })
+    vi.unstubAllGlobals()
+  })
+
   it('keeps denial, expiry, and outages distinct', async () => {
     const fetchImpl = vi
       .fn()

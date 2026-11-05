@@ -1,32 +1,29 @@
-import type { AdminRecords, AdminResult } from './adminTypes'
+import type { AccountStatusChange, AdminRecords, AdminResult, StaffUserDetail } from './adminTypes'
 
 export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Promise<string | null>): AdminRecords {
   const base = apiBaseUrl.replace(/\/$/, '')
 
-  async function get<T>(path: string): Promise<AdminResult<T>> {
+  async function send(path: string, init: RequestInit): Promise<Response> {
     const accessToken = await readAccessToken()
-    if (!accessToken) return { ok: false, kind: 'expired' }
-    let response: Response
+    if (!accessToken) throw new MissingToken()
+    return fetch(`${base}${path}`, {
+      ...init,
+      cache: 'no-store',
+      credentials: 'omit',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        ...init.headers,
+      },
+    })
+  }
+
+  async function get<T>(path: string): Promise<AdminResult<T>> {
     try {
-      response = await fetch(`${base}${path}`, {
-        method: 'GET',
-        cache: 'no-store',
-        credentials: 'omit',
-        headers: {
-          Accept: 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-      })
-    } catch {
-      return { ok: false, kind: 'unavailable' }
-    }
-    if (response.status === 401) return { ok: false, kind: 'expired' }
-    if (response.status === 403) return { ok: false, kind: 'denied' }
-    if (response.status === 404) return { ok: false, kind: 'not-found' }
-    if (!response.ok) return { ok: false, kind: 'unavailable' }
-    try {
-      return { ok: true, data: (await response.json()) as T }
-    } catch {
+      const response = await send(path, { method: 'GET' })
+      return classify<T>(response)
+    } catch (error) {
+      if (error instanceof MissingToken) return { ok: false, kind: 'expired' }
       return { ok: false, kind: 'unavailable' }
     }
   }
@@ -40,6 +37,28 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
     user(id) {
       return get(`/admin/users/${encodeURIComponent(id)}`)
     },
+    async setAccountStatus(id, input) {
+      try {
+        const response = await send(`/admin/users/${encodeURIComponent(id)}/account-status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+        })
+        return classify<AccountStatusChange>(response)
+      } catch (error) {
+        if (error instanceof MissingToken) return { ok: false, kind: 'expired' }
+        const current = await get<StaffUserDetail>(`/admin/users/${encodeURIComponent(id)}`)
+        if (!current.ok && (current.kind === 'denied' || current.kind === 'expired')) return current
+        if (current.ok && (current.data.accountStatus === 'ACTIVE' || current.data.accountStatus === 'SUSPENDED')) {
+          return { ok: true, data: { outcome: 'observed', accountStatus: current.data.accountStatus } }
+        }
+        return { ok: false, kind: 'uncertain' }
+      }
+    },
+    accountActions(targetAccountId) {
+      const params = new URLSearchParams({ targetAccountId })
+      return get(`/admin/account-actions?${params.toString()}`)
+    },
     disputes(cursor) {
       const params = new URLSearchParams()
       if (cursor) params.set('cursor', cursor)
@@ -49,5 +68,28 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
     dispute(id) {
       return get(`/admin/disputes/${encodeURIComponent(id)}`)
     },
+  }
+}
+
+class MissingToken extends Error {}
+
+async function classify<T>(response: Response): Promise<AdminResult<T>> {
+  if (response.status === 401) return { ok: false, kind: 'expired' }
+  if (response.status === 403) {
+    try {
+      const body = (await response.json()) as { code?: unknown }
+      if (body.code === 'ACCOUNT_STATUS_INELIGIBLE') return { ok: false, kind: 'ineligible' }
+    } catch {
+      return { ok: false, kind: 'denied' }
+    }
+    return { ok: false, kind: 'denied' }
+  }
+  if (response.status === 404) return { ok: false, kind: 'not-found' }
+  if (response.status === 409) return { ok: false, kind: 'conflict' }
+  if (!response.ok) return { ok: false, kind: 'unavailable' }
+  try {
+    return { ok: true, data: (await response.json()) as T }
+  } catch {
+    return { ok: false, kind: 'unavailable' }
   }
 }

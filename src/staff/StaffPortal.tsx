@@ -9,9 +9,11 @@ type StaffPortalProps = {
   access: StaffAccessClient
   records?: AdminRecords
   initialRoute?: AdminRoute
+  initialNotice?: string | null
+  startConfirming?: boolean
 }
 
-export function StaffPortal({ auth, access, records, initialRoute }: StaffPortalProps) {
+export function StaffPortal({ auth, access, records, initialRoute, initialNotice, startConfirming }: StaffPortalProps) {
   const session = useStaffSession(auth, access)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const [recordsDenied, setRecordsDenied] = useState(false)
@@ -39,6 +41,8 @@ export function StaffPortal({ auth, access, records, initialRoute }: StaffPortal
           initialRoute={initialRoute}
           recordsDenied={recordsDenied}
           onAccessDenied={denyRecords}
+          initialNotice={initialNotice}
+          startConfirming={startConfirming}
         />
       </section>
     </main>
@@ -54,6 +58,8 @@ function PortalBody({
   initialRoute,
   recordsDenied,
   onAccessDenied,
+  initialNotice,
+  startConfirming,
 }: {
   session: SessionController
   headingRef: RefObject<HTMLHeadingElement | null>
@@ -61,6 +67,8 @@ function PortalBody({
   initialRoute?: AdminRoute
   recordsDenied?: boolean
   onAccessDenied?: () => void
+  initialNotice?: string | null
+  startConfirming?: boolean
 }) {
   const { state } = session
 
@@ -157,6 +165,8 @@ function PortalBody({
           initialRoute={initialRoute}
           onSignOut={() => void session.signOut()}
           onAccessDenied={onAccessDenied}
+          initialNotice={initialNotice}
+          startConfirming={startConfirming}
         />
       )
     }
