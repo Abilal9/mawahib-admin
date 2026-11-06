@@ -165,6 +165,31 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
+.password-field {
+  display: grid;
+  gap: 8px;
+}
+
+.password-control {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+}
+
+.password-control input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.password-toggle {
+  flex: 0 0 auto;
+  min-width: 72px;
+  border-radius: 10px;
+  background: #eef3f8;
+  color: #0e243a;
+}
+
 .nav {
   display: flex;
   flex-wrap: wrap;

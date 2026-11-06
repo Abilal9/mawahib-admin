@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type RefObject } from 'react'
+import { PasswordField } from './PasswordField'
 import { AdminShell } from './AdminShell'
 import type { AdminRecords, AdminRoute } from './adminTypes'
 import type { StaffAccessClient, StaffAuthClient } from './types'
@@ -347,16 +348,15 @@ function SignIn({
           disabled={state.busy}
           onChange={(event) => setEmail(event.target.value)}
         />
-        <label htmlFor={passwordId}>Password</label>
-        <input
+        <PasswordField
           id={passwordId}
+          label="Password"
           name="password"
-          type="password"
           autoComplete="current-password"
-          required
           value={password}
+          onChange={setPassword}
+          required
           disabled={state.busy}
-          onChange={(event) => setPassword(event.target.value)}
         />
         {state.error ? <p role="alert">{state.error}</p> : null}
         <div className="actions">

@@ -1,4 +1,5 @@
-import { useEffect, useRef, type FormEvent, type RefObject } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent, type RefObject } from 'react'
+import { PasswordField } from './PasswordField'
 
 export type InvitationScreenState =
   | { name: 'loading' }
@@ -126,11 +127,21 @@ function PasswordForm({
   busy: boolean
   onPassword?: (password: string) => void
 }) {
+  const confirmMessageId = useId()
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [mismatch, setMismatch] = useState(false)
+  const mismatchVisible = mismatch && password !== confirm
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (busy) return
-    const data = new FormData(event.currentTarget)
-    onPassword?.(String(data.get('password') ?? ''))
+    if (password !== confirm) {
+      setMismatch(true)
+      return
+    }
+    setMismatch(false)
+    onPassword?.(password)
   }
 
   return (
@@ -142,16 +153,30 @@ function PasswordForm({
           : 'This invitation does not include a shared password. Choose one for this staff account.'}
       </p>
       <form onSubmit={submit}>
-        <label htmlFor="staff-new-password">Password</label>
-        <input
+        <PasswordField
           id="staff-new-password"
+          label="Password"
           name="password"
-          type="password"
           autoComplete="new-password"
+          value={password}
+          onChange={setPassword}
           minLength={8}
           required
           disabled={busy}
         />
+        <PasswordField
+          id="staff-confirm-password"
+          label="Confirm password"
+          name="confirm-password"
+          autoComplete="new-password"
+          value={confirm}
+          onChange={setConfirm}
+          minLength={8}
+          required
+          disabled={busy}
+          describedBy={mismatchVisible ? confirmMessageId : undefined}
+        />
+        {mismatchVisible ? <p id={confirmMessageId} role="alert">Passwords do not match.</p> : null}
         {error ? <p role="alert">{error}</p> : null}
         <div className="actions">
           <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save password'}</button>

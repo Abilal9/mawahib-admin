@@ -1,8 +1,12 @@
-import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { beginInvitation, passwordProblem } from './invitationFlow'
 import { inviteLocationWithoutSecrets, readInviteCallback, stripInviteLocation } from './invitationCallback'
 import { InvitationScreen } from './InvitationScreen'
+
+afterEach(() => {
+  cleanup()
+})
 
 describe('staff invitation callback', () => {
   it('reads an invite token hash and removes it from the address', () => {
@@ -124,11 +128,39 @@ describe('staff invitation callback', () => {
     const onPassword = vi.fn()
     const { rerender } = render(<InvitationScreen state={{ name: 'password', purpose: 'invite', error: null, busy: false }} onPassword={onPassword} />)
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'chosen-password' } })
+    fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'chosen-password' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save password' }))
     expect(onPassword).toHaveBeenCalledWith('chosen-password')
     rerender(<InvitationScreen state={{ name: 'failure' }} onRetry={() => undefined} />)
     expect(screen.getByRole('alert').textContent).toMatch(/Nothing was changed/)
     rerender(<InvitationScreen state={{ name: 'waiting' }} onSignOut={() => undefined} />)
     expect(screen.getByRole('heading', { name: 'Waiting for activation' })).toBeTruthy()
+  })
+
+  it('keeps mismatched setup passwords and does not submit them', () => {
+    const onPassword = vi.fn()
+    render(<InvitationScreen state={{ name: 'password', purpose: 'recovery', error: null, busy: false }} onPassword={onPassword} />)
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'first-password' } })
+    fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'other-password' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save password' }))
+    expect(onPassword).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveProperty('textContent', 'Passwords do not match.')
+    expect(screen.getByLabelText('Password')).toHaveProperty('value', 'first-password')
+    expect(screen.getByLabelText('Confirm password')).toHaveProperty('value', 'other-password')
+    expect(screen.getByLabelText('Password').getAttribute('autocomplete')).toBe('new-password')
+    expect(screen.getByLabelText('Confirm password').getAttribute('autocomplete')).toBe('new-password')
+  })
+
+  it('toggles password visibility without submitting the setup form', () => {
+    const onPassword = vi.fn()
+    render(<InvitationScreen state={{ name: 'password', purpose: 'invite', error: null, busy: false }} onPassword={onPassword} />)
+    const password = screen.getByLabelText('Password')
+    const toggle = screen.getByRole('button', { name: 'Show password' })
+    expect(password).toHaveProperty('type', 'password')
+    expect(toggle).toHaveProperty('type', 'button')
+    fireEvent.click(toggle)
+    expect(onPassword).not.toHaveBeenCalled()
+    expect(password).toHaveProperty('type', 'text')
+    expect(screen.getByRole('button', { name: 'Hide password' })).toBeTruthy()
   })
 })

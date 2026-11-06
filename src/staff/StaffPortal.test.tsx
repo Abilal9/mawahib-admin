@@ -182,6 +182,11 @@ describe('StaffPortal', () => {
     expect(await screen.findByRole('heading', { name: 'Staff sign in' })).toBeTruthy()
     expect(screen.getByLabelText('Email').getAttribute('autocomplete')).toBe('username')
     expect(screen.getByLabelText('Password').getAttribute('autocomplete')).toBe('current-password')
+    const password = screen.getByLabelText('Password')
+    fireEvent.click(screen.getByRole('button', { name: 'Show password' }))
+    expect(password).toHaveProperty('type', 'text')
+    fireEvent.click(screen.getByRole('button', { name: 'Hide password' }))
+    expect(password).toHaveProperty('type', 'password')
     expect(harness.checks).toEqual([])
   })
 
