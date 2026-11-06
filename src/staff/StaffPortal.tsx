@@ -30,6 +30,19 @@ export function StaffPortal({ auth, access, records, initialRoute, initialNotice
     headingRef.current?.focus()
   }, [phase])
 
+  if (phase === 'accepted' && records && !recordsDenied) {
+    return (
+      <AdminShell
+        records={records}
+        initialRoute={initialRoute}
+        onSignOut={() => void session.signOut()}
+        onAccessDenied={denyRecords}
+        initialNotice={initialNotice}
+        startConfirming={startConfirming}
+      />
+    )
+  }
+
   return (
     <main className="shell">
       <section className={wide ? 'card wide' : 'card'} aria-labelledby="portal-title">

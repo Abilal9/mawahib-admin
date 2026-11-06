@@ -212,6 +212,7 @@ function previewAuth(mode: string): StaffAuthClient {
 function isStaffPreview(mode: string): boolean {
   return [
     'accepted',
+    'portal',
     'users',
     'user',
     'disputes',

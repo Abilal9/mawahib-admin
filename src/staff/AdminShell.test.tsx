@@ -433,7 +433,7 @@ describe('AdminShell', () => {
         onSignOut={() => undefined}
       />,
     )
-    expect(await screen.findByRole('heading', { name: 'Operations' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Monitoring' })).toBeTruthy()
     expect(screen.getByText('Unknown')).toBeTruthy()
     expect(screen.getAllByText('Down')).toHaveLength(2)
     expect(screen.getByText('Stale')).toBeTruthy()
@@ -471,7 +471,7 @@ describe('AdminShell', () => {
       resolveLate({ ok: false, kind: 'denied' })
     })
     expect(screen.getByText('Staff access is not active for this account. Contact your administrator.')).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: 'Operations' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Monitoring' })).toBeNull()
   })
 
   it('ignores an operations response after the screen has changed', async () => {
@@ -519,5 +519,21 @@ describe('AdminShell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
     expect(await screen.findByText('Second reading')).toBeTruthy()
     expect(calls).toBe(2)
+  })
+
+  it('shows placeholders instead of demo records and does not invent overview totals', async () => {
+    render(<AdminShell records={records()} onSignOut={() => undefined} />)
+    expect(await screen.findByRole('heading', { name: 'Overview' })).toBeTruthy()
+    expect(screen.getAllByText('Not connected').length).toBeGreaterThan(0)
+    expect(screen.queryByText(/^0$/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Marketplace' }))
+    expect(await screen.findByText(/Marketplace oversight is not connected/)).toBeTruthy()
+    expect(screen.queryByText('Omar Al-Harbi')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Reports' }))
+    expect(await screen.findByText(/next milestone after this portal/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Payments' }))
+    expect(await screen.findByText(/Payment and invoice lists are not connected/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Staff' }))
+    expect(await screen.findByText(/operator commands/)).toBeTruthy()
   })
 })

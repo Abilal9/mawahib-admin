@@ -1,15 +1,19 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import type { AccountActionRecord, AdminRecords, AdminResult, AdminRoute, OperationsOverview, StaffDispute, StaffUserDetail, StaffUserSummary } from './adminTypes'
 import { OPERATIONS_POLL_MS, OperationsView } from './OperationsView'
+import { PortalFrame, type PortalSection } from '../portal/PortalFrame'
+
+type PlaceholderSection = 'marketplace' | 'reports' | 'payments' | 'staff'
 
 type View =
   | { name: 'loading' }
-  | { name: 'home' }
+  | { name: 'overview'; overview: OperationsOverview | null }
   | { name: 'users'; query: string; items: StaffUserSummary[]; nextCursor: string | null }
   | { name: 'user'; user: StaffUserDetail }
   | { name: 'disputes'; items: StaffDispute[]; nextCursor: string | null }
   | { name: 'dispute'; dispute: StaffDispute }
   | { name: 'operations'; overview: OperationsOverview }
+  | { name: 'placeholder'; section: PlaceholderSection }
   | { name: 'empty'; message: string }
   | { name: 'denied' }
   | { name: 'expired' }
@@ -55,7 +59,7 @@ export function AdminShell({
   }, [onAccessDenied, records, route, reload])
 
   useEffect(() => {
-    if (route.name !== 'operations') return
+    if (route.name !== 'operations' && route.name !== 'home') return
     const timer = setInterval(() => {
       const id = ++requestId.current
       void load(records, route).then((next) => {
@@ -74,142 +78,142 @@ export function AdminShell({
     setRoute(next)
   }
 
+  function navigate(section: PortalSection) {
+    open(navigateSection(section))
+  }
+
   function submitSearch(event: FormEvent) {
     event.preventDefault()
     open({ name: 'users', query: query.trim(), cursor: null })
   }
 
   return (
-    <>
-      <nav className="nav" aria-label="Staff">
-        <button type="button" onClick={() => open({ name: 'users', query: '', cursor: null })}>
-          Users
-        </button>
-        <button type="button" onClick={() => open({ name: 'disputes', cursor: null })}>
-          Disputes
-        </button>
-        <button type="button" onClick={() => open({ name: 'operations' })}>
-          Operations
-        </button>
-        <button type="button" className="secondary" onClick={onSignOut}>
-          Sign out
-        </button>
-      </nav>
-      {route.name !== 'home' ? (
-        <button type="button" className="secondary" onClick={() => open(backRoute(route))}>
-          Back
-        </button>
-      ) : null}
-      <SearchForm
-        searchId={searchId}
-        query={query}
-        setQuery={setQuery}
-        onSubmit={submitSearch}
-        show={route.name === 'users'}
-      />
-      {view.name === 'loading' ? <h1 id="portal-title">Loading records</h1> : null}
-      {view.name === 'home' ? (
-        <>
-          <h1 id="portal-title">Staff session</h1>
-          <p>Role: Operator</p>
-        </>
-      ) : null}
-      {view.name === 'denied' ? (
-        <>
-          <h1 id="portal-title">Staff access unavailable</h1>
-          <p role="alert">Staff access is not active for this account. Contact your administrator.</p>
-        </>
-      ) : null}
-      {view.name === 'expired' ? (
-        <>
-          <h1 id="portal-title">Session expired</h1>
-          <p role="alert">Your session has expired. Sign in again.</p>
-        </>
-      ) : null}
-      {view.name === 'unavailable' ? (
-        <>
-          <h1 id="portal-title">Staff service unavailable</h1>
-          <p role="alert">The staff service is temporarily unavailable. Try again.</p>
-        </>
-      ) : null}
-      {view.name === 'missing' ? (
-        <>
-          <h1 id="portal-title">Record unavailable</h1>
-          <p role="alert">That record is not available.</p>
-        </>
-      ) : null}
-      {view.name === 'empty' ? (
-        <>
-          <h1 id="portal-title">{route.name === 'disputes' ? 'Disputes' : 'Users'}</h1>
-          <p>{view.message}</p>
-        </>
-      ) : null}
+    <PortalFrame
+      current={sectionFor(route)}
+      title={titleFor(route, view)}
+      onNavigate={navigate}
+      onSignOut={onSignOut}
+      signOutLabel="Sign out"
+      showBack={route.name !== 'home'}
+      onBack={() => open(backRoute(route))}
+    >
+      <SearchForm searchId={searchId} query={query} setQuery={setQuery} onSubmit={submitSearch} show={route.name === 'users'} />
+      {view.name === 'overview' ? <Overview overview={view.overview} onOpen={open} onRefresh={() => setReload((value) => value + 1)} /> : null}
+      {view.name === 'denied' ? <p role="alert">Staff access is not active for this account. Contact your administrator.</p> : null}
+      {view.name === 'expired' ? <p role="alert">Your session has expired. Sign in again.</p> : null}
+      {view.name === 'unavailable' ? <p role="alert">The staff service is temporarily unavailable. Try again.</p> : null}
+      {view.name === 'missing' ? <p role="alert">That record is not available.</p> : null}
+      {view.name === 'empty' ? <p>{view.message}</p> : null}
+      {view.name === 'placeholder' ? <Placeholder section={view.section} /> : null}
       {view.name === 'users' ? (
-        <>
-          <h1 id="portal-title">Users</h1>
-          <div className="records">
-            {view.items.map((user) => (
-              <article key={user.id} className="record">
-                <h2>{user.displayName}</h2>
+        <div className="demo-list">
+          {view.items.map((user) => (
+            <article key={user.id} className="demo-row">
+              <div>
+                <p><strong>{user.displayName}</strong></p>
                 <p>{user.username}</p>
                 <p>{user.email}</p>
-                <p>
-                  {user.accountType} · {user.accountStatus}
-                  {user.deletedAt ? ' · Deleted' : ''}
-                </p>
-                <button type="button" onClick={() => open({ name: 'user', id: user.id })}>
-                  View account
-                </button>
-              </article>
-            ))}
-          </div>
-          {view.nextCursor ? (
-            <button type="button" onClick={() => open({ name: 'users', query: view.query, cursor: view.nextCursor })}>
-              Next
-            </button>
-          ) : null}
-        </>
+                <p>{user.accountType} · {user.accountStatus}{user.deletedAt ? ' · Deleted' : ''}</p>
+              </div>
+              <button type="button" className="text-action" onClick={() => open({ name: 'user', id: user.id })}>View account</button>
+            </article>
+          ))}
+          {view.nextCursor ? <button type="button" onClick={() => open({ name: 'users', query: view.query, cursor: view.nextCursor })}>Next</button> : null}
+        </div>
       ) : null}
       {view.name === 'user' ? (
-        <UserDetail
-          user={view.user}
-          records={records}
-          onAccessDenied={onAccessDenied}
-          initialNotice={initialNotice}
-          startConfirming={startConfirming}
-        />
+        <UserDetail user={view.user} records={records} onAccessDenied={onAccessDenied} initialNotice={initialNotice} startConfirming={startConfirming} />
       ) : null}
       {view.name === 'disputes' ? (
-        <>
-          <h1 id="portal-title">Disputes</h1>
-          <div className="records">
-            {view.items.map((dispute) => (
-              <article key={dispute.id} className="record">
-                <h2>{dispute.title}</h2>
-                <p>
-                  {dispute.clientDisplayName ?? 'Name unavailable'} and {dispute.providerDisplayName ?? 'Name unavailable'}
-                </p>
+        <div className="demo-list">
+          {view.items.map((dispute) => (
+            <article key={dispute.id} className="demo-row">
+              <div>
+                <p><strong>{dispute.title}</strong></p>
+                <p>{dispute.clientDisplayName ?? 'Name unavailable'} and {dispute.providerDisplayName ?? 'Name unavailable'}</p>
                 <p>{dispute.disputeNote ?? 'No dispute note is recorded.'}</p>
                 <PaymentLine payment={dispute.payment} />
-                <button type="button" onClick={() => open({ name: 'dispute', id: dispute.id })}>
-                  View dispute
-                </button>
-              </article>
-            ))}
-          </div>
-          {view.nextCursor ? (
-            <button type="button" onClick={() => open({ name: 'disputes', cursor: view.nextCursor })}>
-              Next
-            </button>
-          ) : null}
-        </>
+              </div>
+              <button type="button" className="text-action" onClick={() => open({ name: 'dispute', id: dispute.id })}>View dispute</button>
+            </article>
+          ))}
+          {view.nextCursor ? <button type="button" onClick={() => open({ name: 'disputes', cursor: view.nextCursor })}>Next</button> : null}
+        </div>
       ) : null}
       {view.name === 'dispute' ? <DisputeDetail dispute={view.dispute} /> : null}
-      {view.name === 'operations' ? (
-        <OperationsView overview={view.overview} onRefresh={() => setReload((value) => value + 1)} />
-      ) : null}
+      {view.name === 'operations' ? <OperationsView overview={view.overview} embedded onRefresh={() => setReload((value) => value + 1)} /> : null}
+    </PortalFrame>
+  )
+}
+
+function navigateSection(section: PortalSection): AdminRoute {
+  if (section === 'overview') return { name: 'home' }
+  if (section === 'users') return { name: 'users', query: '', cursor: null }
+  if (section === 'disputes') return { name: 'disputes', cursor: null }
+  if (section === 'operations') return { name: 'operations' }
+  return { name: section }
+}
+
+function sectionFor(route: AdminRoute): PortalSection {
+  if (route.name === 'home') return 'overview'
+  if (route.name === 'user') return 'users'
+  if (route.name === 'dispute') return 'disputes'
+  if (route.name === 'marketplace' || route.name === 'reports' || route.name === 'payments' || route.name === 'staff') return route.name
+  return route.name
+}
+
+function titleFor(route: AdminRoute, view: View): string {
+  if (view.name === 'loading') return 'Loading records'
+  if (view.name === 'denied') return 'Staff access unavailable'
+  if (view.name === 'expired') return 'Session expired'
+  if (view.name === 'unavailable') return 'Staff service unavailable'
+  if (view.name === 'missing') return 'Record unavailable'
+  if (view.name === 'user') return view.user.displayName
+  if (view.name === 'dispute') return view.dispute.title
+  if (route.name === 'home') return 'Overview'
+  if (route.name === 'users') return 'Users'
+  if (route.name === 'disputes') return 'Disputes'
+  if (route.name === 'operations') return 'Monitoring'
+  if (route.name === 'marketplace') return 'Marketplace'
+  if (route.name === 'reports') return 'Reports'
+  if (route.name === 'payments') return 'Payments'
+  return 'Staff'
+}
+
+function Overview({ overview, onOpen, onRefresh }: { overview: OperationsOverview | null; onOpen: (route: AdminRoute) => void; onRefresh: () => void }) {
+  return (
+    <>
+      <p className="section-note">Shortcuts open the sections this portal can read. Counts are omitted where no total is available.</p>
+      <div className="demo-metrics">
+        <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'users', query: '', cursor: null })}>
+          <span className="metric-title">Users</span>
+          <span className="metric-value">Not connected</span>
+          <span className="metric-detail">Lookup is available. There is no total count.</span>
+        </button>
+        <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'disputes', cursor: null })}>
+          <span className="metric-title">Disputes</span>
+          <span className="metric-value">Not connected</span>
+          <span className="metric-detail">The open queue is available. There is no total count.</span>
+        </button>
+        <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'operations' })}>
+          <span className="metric-title">Monitoring</span>
+          <span className="metric-value">{overview ? 'Connected' : 'Not connected'}</span>
+          <span className="metric-detail">{overview ? 'Provider readings are below. A reading is not a global total.' : 'The monitoring summary did not load.'}</span>
+        </button>
+      </div>
+      {overview ? <OperationsView overview={overview} embedded onRefresh={onRefresh} /> : <p>Monitoring readings are not available right now.</p>}
     </>
   )
+}
+
+function Placeholder({ section }: { section: PlaceholderSection }) {
+  const copy = {
+    marketplace: 'Marketplace oversight is not connected. Jobs, services, applications, and engagements will appear here when that API exists.',
+    reports: 'Report submission and moderation are the next milestone after this portal. No report queue is connected.',
+    payments: 'Payment and invoice lists are not connected. A dispute can still show its own simulated payment when the dispute API includes one.',
+    staff: 'Staff invitations and activation stay on operator commands. This screen does not invite, activate, or hold credentials.',
+  }[section]
+  return <p className="demo-panel">{copy}</p>
 }
 
 function SearchForm({
@@ -227,7 +231,7 @@ function SearchForm({
 }) {
   if (!show) return null
   return (
-    <form onSubmit={onSubmit}>
+    <form className="demo-filters" onSubmit={onSubmit}>
       <label htmlFor={searchId}>Email, username, or account id</label>
       <input id={searchId} name="q" value={query} onChange={(event) => setQuery(event.target.value)} />
       <div className="actions">
@@ -336,8 +340,7 @@ function UserDetail({
   }
 
   return (
-    <>
-      <h1 id="portal-title">{current.displayName}</h1>
+    <section className="demo-panel">
       <p>{current.username}</p>
       <p>{current.email}</p>
       <p>
@@ -393,14 +396,13 @@ function UserDetail({
           </article>
         ))}
       </div>
-    </>
+    </section>
   )
 }
 
 function DisputeDetail({ dispute }: { dispute: StaffDispute }) {
   return (
-    <>
-      <h1 id="portal-title">{dispute.title}</h1>
+    <section className="demo-panel">
       <p>Status: Disputed</p>
       <p>Client: {dispute.clientDisplayName ?? 'Name unavailable'}</p>
       <p>Provider: {dispute.providerDisplayName ?? 'Name unavailable'}</p>
@@ -408,7 +410,7 @@ function DisputeDetail({ dispute }: { dispute: StaffDispute }) {
       <p>{dispute.disputeNote ?? 'No dispute note is recorded.'}</p>
       {dispute.disputeAt ? <p>Dispute opened {formatWhen(dispute.disputeAt)}</p> : null}
       <PaymentLine payment={dispute.payment} />
-    </>
+    </section>
   )
 }
 
@@ -441,7 +443,14 @@ function formatWhen(value: string): string {
 }
 
 async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
-  if (route.name === 'home') return { name: 'home' }
+  if (route.name === 'marketplace' || route.name === 'reports' || route.name === 'payments' || route.name === 'staff') {
+    return { name: 'placeholder', section: route.name }
+  }
+  if (route.name === 'home') {
+    const result = await records.operations()
+    if (!result.ok && (result.kind === 'denied' || result.kind === 'expired')) return failure(result.kind)
+    return { name: 'overview', overview: result.ok ? result.data : null }
+  }
   if (route.name === 'users') {
     if (!route.query) return { name: 'empty', message: 'Search by email, username, or account id.' }
     return fromPage(await records.searchUsers(route.query, route.cursor), 'No accounts match that search.', (page) => ({

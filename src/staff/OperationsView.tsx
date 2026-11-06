@@ -23,7 +23,11 @@ export function OperationsView({
   const attention = overview.cards.filter(needsAttention).length
   return (
     <section className="ops-board" aria-label="Provider readings">
-      {embedded ? null : (
+      {embedded ? (
+        <div className="actions">
+          <button type="button" className="secondary" onClick={onRefresh}>Refresh</button>
+        </div>
+      ) : (
         <div className="ops-heading">
           <h1 id="portal-title">Operations</h1>
           <button type="button" className="secondary" onClick={onRefresh}>Refresh</button>

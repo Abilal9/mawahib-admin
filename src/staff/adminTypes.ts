@@ -86,6 +86,10 @@ export type AdminRoute =
   | { name: 'disputes'; cursor: string | null }
   | { name: 'dispute'; id: string }
   | { name: 'operations' }
+  | { name: 'marketplace' }
+  | { name: 'reports' }
+  | { name: 'payments' }
+  | { name: 'staff' }
 
 export type OpsState = 'up' | 'down' | 'degraded' | 'paused' | 'unknown' | 'unavailable' | 'not_configured' | 'not_available'
 

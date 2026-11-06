@@ -1,4 +1,5 @@
 import { createElement, useEffect, useId, useState, type FormEvent, type ReactNode } from 'react'
+import { PortalFrame, type PortalSection } from '../portal/PortalFrame'
 import { OperationsView } from '../staff/OperationsView'
 import './demo.css'
 import {
@@ -72,16 +73,16 @@ function hashFor(route: Route): string {
   return route.section
 }
 
-const NAV: { section: Section; label: string }[] = [
-  { section: 'overview', label: 'Overview' },
-  { section: 'users', label: 'Users' },
-  { section: 'marketplace', label: 'Marketplace' },
-  { section: 'reports', label: 'Reports' },
-  { section: 'disputes', label: 'Disputes' },
-  { section: 'payments', label: 'Payments' },
-  { section: 'operations', label: 'Monitoring' },
-  { section: 'staff', label: 'Staff' },
-]
+const NAV_SECTION: Record<Section, PortalSection> = {
+  overview: 'overview',
+  users: 'users',
+  marketplace: 'marketplace',
+  reports: 'reports',
+  disputes: 'disputes',
+  payments: 'payments',
+  operations: 'operations',
+  staff: 'staff',
+}
 
 export function DemoApp() {
   const [route, setRoute] = useState<Route>(initialRoute)
@@ -126,7 +127,7 @@ export function DemoApp() {
     setRoute(next)
   }
 
-  function jump(section: Section) {
+  function jump(section: PortalSection) {
     setNotice(null)
     setStack([])
     if (section === 'users') setRoute({ section, query: '', status: 'all', type: 'all' })
@@ -176,33 +177,17 @@ export function DemoApp() {
   const section = route.section === 'user' ? 'users' : route.section === 'job' || route.section === 'service' || route.section === 'application' || route.section === 'engagement' ? 'marketplace' : route.section === 'report' ? 'reports' : route.section === 'dispute' ? 'disputes' : route.section === 'invoice' ? 'payments' : route.section
 
   return (
-    <div className="demo-app">
-      <aside className="demo-side">
-        <p className="brand">Mawahib</p>
-        <nav aria-label="Portal sections">
-          {NAV.map((item) => (
-            <button key={item.section} type="button" aria-current={section === item.section ? 'page' : undefined} onClick={() => jump(item.section)}>
-              {item.label}
-            </button>
-          ))}
-        </nav>
-        <button type="button" className="secondary" onClick={reset}>
-          Demo sign out
-        </button>
-      </aside>
-      <main className="demo-main">
-        <p className="demo-banner">Demo — synthetic data</p>
-        <header className="demo-header">
-          <div>
-            <p className="demo-kicker">Internal oversight</p>
-            <h1 id="portal-title">{titleFor(route)}</h1>
-          </div>
-          {stack.length > 0 ? (
-            <button type="button" className="secondary" onClick={back}>
-              Back
-            </button>
-          ) : null}
-        </header>
+    <>
+      <PortalFrame
+        current={NAV_SECTION[section]}
+        title={titleFor(route)}
+        banner="Demo — synthetic data"
+        onNavigate={jump}
+        onSignOut={reset}
+        signOutLabel="Demo sign out"
+        showBack={stack.length > 0}
+        onBack={back}
+      >
         {notice ? <p role="status">{notice}</p> : null}
         <Screen
           route={route}
@@ -214,7 +199,7 @@ export function DemoApp() {
           setDialog={setDialog}
           setNotice={setNotice}
         />
-      </main>
+      </PortalFrame>
       {dialog ? (
         <DemoDialog
           dialog={dialog}
@@ -226,7 +211,7 @@ export function DemoApp() {
           }}
         />
       ) : null}
-    </div>
+    </>
   )
 }
 

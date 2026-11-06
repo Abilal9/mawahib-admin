@@ -10,8 +10,9 @@
   --warn: #f0b429;
   --danger: #e12d39;
   min-height: 100vh;
+  max-width: 100%;
   display: grid;
-  grid-template-columns: 232px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 232px) minmax(0, 1fr);
   background: var(--canvas);
   color: var(--navy);
   font-family: Inter, "Avenir Next", "Segoe UI", sans-serif;
