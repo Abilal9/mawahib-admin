@@ -7,9 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
@@ -41,18 +39,24 @@ jobs:
             echo "Production bundle contains a demo fixture or a server credential."
             exit 1
           fi
-      - uses: actions/upload-pages-artifact@v3
+      - name: Publish the site branch
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        with:
-          path: dist
-
-  deploy:
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/deploy-pages@v4
-        id: deployment
+        run: |
+          cp -R dist /tmp/portal-dist
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages || true
+          if git rev-parse --verify origin/gh-pages >/dev/null 2>&1; then
+            git checkout --force -B gh-pages origin/gh-pages
+          else
+            git checkout --orphan gh-pages
+          fi
+          find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          cp -R /tmp/portal-dist/. .
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Site branch already matches this build."
+          else
+            git commit -m "Publish the staff portal"
+            git push origin gh-pages
+          fi
