@@ -9,7 +9,9 @@ import './staff/staff.css'
 const root = document.getElementById('root')
 if (!root) throw new Error('Missing root')
 
-const preview = import.meta.env.DEV ? new URLSearchParams(window.location.search).get('preview') : null
+const search = new URLSearchParams(window.location.search)
+const preview = import.meta.env.DEV ? search.get('preview') : null
+const demo = import.meta.env.DEV ? search.get('demo') : null
 
 if (preview) {
   const { mountPreview } = await import('./preview')
@@ -18,20 +20,29 @@ if (preview) {
   const url = import.meta.env.VITE_SUPABASE_URL?.trim()
   const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim()
   const api = import.meta.env.VITE_API_BASE_URL?.trim()
-  if (!url || !key || !api) {
+  const configured = Boolean(url && key && api)
+  if (import.meta.env.DEV && (demo || !configured)) {
+    const { mountDemo } = await import('./demo/mount')
+    mountDemo(root)
+  } else if (!configured) {
     createRoot(root).render(
       <StrictMode>
         <ConfigurationMissing />
       </StrictMode>,
     )
   } else {
-    const auth = createBrowserStaffAuth(url, key)
+    const auth = createBrowserStaffAuth(url as string, key as string)
     createRoot(root).render(
       <StrictMode>
         <StaffPortal
           auth={auth}
-          access={createStaffAccessClient(api)}
-          records={createAdminRecords(api, async () => (await auth.getSession()).accessToken)}
+          access={createStaffAccessClient(api as string)}
+          records={createAdminRecords(api as string, async () => (await auth.getSession()).accessToken)}
+          onEnterDemo={import.meta.env.DEV ? () => {
+            const next = new URL(window.location.href)
+            next.searchParams.set('demo', '1')
+            window.location.assign(next.toString())
+          } : undefined}
         />
       </StrictMode>,
     )

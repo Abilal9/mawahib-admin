@@ -11,9 +11,10 @@ type StaffPortalProps = {
   initialRoute?: AdminRoute
   initialNotice?: string | null
   startConfirming?: boolean
+  onEnterDemo?: () => void
 }
 
-export function StaffPortal({ auth, access, records, initialRoute, initialNotice, startConfirming }: StaffPortalProps) {
+export function StaffPortal({ auth, access, records, initialRoute, initialNotice, startConfirming, onEnterDemo }: StaffPortalProps) {
   const session = useStaffSession(auth, access)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const [recordsDenied, setRecordsDenied] = useState(false)
@@ -43,6 +44,7 @@ export function StaffPortal({ auth, access, records, initialRoute, initialNotice
           onAccessDenied={denyRecords}
           initialNotice={initialNotice}
           startConfirming={startConfirming}
+          onEnterDemo={onEnterDemo}
         />
       </section>
     </main>
@@ -60,6 +62,7 @@ function PortalBody({
   onAccessDenied,
   initialNotice,
   startConfirming,
+  onEnterDemo,
 }: {
   session: SessionController
   headingRef: RefObject<HTMLHeadingElement | null>
@@ -69,6 +72,7 @@ function PortalBody({
   onAccessDenied?: () => void
   initialNotice?: string | null
   startConfirming?: boolean
+  onEnterDemo?: () => void
 }) {
   const { state } = session
 
@@ -84,7 +88,7 @@ function PortalBody({
   }
 
   if (state.name === 'signed-out') {
-    return <SignIn state={state} onSubmit={session.signIn} headingRef={headingRef} />
+    return <SignIn state={state} onSubmit={session.signIn} headingRef={headingRef} onEnterDemo={onEnterDemo} />
   }
 
   if (state.name === 'setup-required') {
@@ -258,10 +262,12 @@ function SignIn({
   state,
   onSubmit,
   headingRef,
+  onEnterDemo,
 }: {
   state: { error: string | null; busy: boolean }
   onSubmit: (email: string, password: string) => Promise<void>
   headingRef: RefObject<HTMLHeadingElement | null>
+  onEnterDemo?: () => void
 }) {
   const emailId = useId()
   const passwordId = useId()
@@ -308,6 +314,11 @@ function SignIn({
           <button type="submit" disabled={state.busy}>
             {state.busy ? 'Signing in' : 'Sign in'}
           </button>
+          {import.meta.env.DEV && onEnterDemo ? (
+            <button type="button" className="secondary" onClick={onEnterDemo}>
+              Enter demo
+            </button>
+          ) : null}
         </div>
       </form>
     </>
