@@ -189,6 +189,22 @@ function PortalBody({
     )
   }
 
+  if (state.name === 'pending') {
+    return (
+      <>
+        <h1 id="portal-title" ref={headingRef} tabIndex={-1}>
+          Waiting for activation
+        </h1>
+        <p>Your password and authenticator are saved. An administrator still has to activate this staff account before it can open the portal.</p>
+        <div className="actions">
+          <button type="button" onClick={() => void session.signOut()}>
+            Sign out
+          </button>
+        </div>
+      </>
+    )
+  }
+
   if (state.name === 'denied') {
     return (
       <>

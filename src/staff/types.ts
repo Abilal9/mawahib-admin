@@ -32,7 +32,7 @@ export type StaffAuthClient = {
 
 export type StaffAccessResult =
   | { ok: true; role: 'operator' }
-  | { ok: false; kind: 'denied' | 'unavailable' | 'expired' }
+  | { ok: false; kind: 'denied' | 'pending' | 'unavailable' | 'expired' }
 
 export type StaffAccessClient = {
   check(accessToken: string): Promise<StaffAccessResult>
@@ -47,6 +47,7 @@ export type PortalState =
   | { name: 'checking' }
   | { name: 'accepted'; role: 'operator' }
   | { name: 'denied' }
+  | { name: 'pending' }
   | { name: 'unavailable' }
   | { name: 'auth-unavailable' }
   | { name: 'operator-help' }

@@ -293,6 +293,20 @@ describe('StaffPortal', () => {
     expect(harness.checks).toEqual([])
   })
 
+  it('shows a pending membership as waiting for activation', async () => {
+    const harness = createHarness({
+      accessToken: 'token-1',
+      userId: 'user-1',
+      level: 'aal2',
+      factors: [{ id: 'totp-1', factorType: 'totp', status: 'verified' }],
+    })
+    harness.setAccessResults([{ ok: false, kind: 'pending' }])
+    render(<StaffPortal auth={harness.auth} access={harness.access} />)
+    expect(await screen.findByRole('heading', { name: 'Waiting for activation' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Staff session' })).toBeNull()
+    expect(harness.counts.signOut).toBe(0)
+  })
+
   it('does not grant staff access from a successful authenticator check alone', async () => {
     const harness = createHarness()
     harness.setAccessResults([{ ok: false, kind: 'denied' }])

@@ -63,6 +63,11 @@ export function useStaffSession(auth: StaffAuthClient, access: StaffAccessClient
       commit({ name: 'denied' })
       return
     }
+    if (result.kind === 'pending') {
+      clearDraft()
+      commit({ name: 'pending' })
+      return
+    }
     if (result.kind === 'expired') {
       expiryRef.current = true
       await authRef.current.signOut()

@@ -8,18 +8,22 @@ type FactorRow = {
   status: string
 }
 
-export function createBrowserStaffAuth(url: string, publishableKey: string): StaffAuthClient {
-  const client = createClient(url, publishableKey, {
+export function createStaffBrowserClient(url: string, publishableKey: string): SupabaseClient {
+  return createClient(url, publishableKey, {
     auth: {
       // Tab sessionStorage. Closing the tab drops it. This does not stop scripts in the page.
       storage: createSessionAuthStorage(window.sessionStorage),
       persistSession: true,
       // Renew the session while this tab is open. TOKEN_REFRESHED repeats the staff-access check.
       autoRefreshToken: true,
+      // Invitation links are accepted explicitly. A hash must not become a session by itself.
       detectSessionInUrl: false,
     },
   })
-  return createSupabaseStaffAuth(client)
+}
+
+export function createBrowserStaffAuth(url: string, publishableKey: string): StaffAuthClient {
+  return createSupabaseStaffAuth(createStaffBrowserClient(url, publishableKey))
 }
 
 export function createSupabaseStaffAuth(client: SupabaseClient): StaffAuthClient {

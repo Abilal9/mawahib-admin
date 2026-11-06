@@ -21,6 +21,12 @@ describe('createStaffAccessClient', () => {
     })
   })
 
+  it('keeps a pending membership out of the portal', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(403, { code: 'STAFF_PENDING_ACTIVATION' }))
+    const client = createStaffAccessClient('https://api.example.test/api/v1', fetchImpl)
+    await expect(client.check('staff-token')).resolves.toEqual({ ok: false, kind: 'pending' })
+  })
+
   it('does not treat a generic denial as a pending-membership signal', async () => {
     const fetchImpl = vi.fn(async () => jsonResponse(403, { code: 'STAFF_ACCESS_DENIED', message: 'Staff access is required.' }))
     const client = createStaffAccessClient('https://api.example.test/api/v1', fetchImpl)

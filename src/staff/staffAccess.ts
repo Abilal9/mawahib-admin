@@ -21,7 +21,15 @@ export function createStaffAccessClient(apiBaseUrl: string, fetchImpl: typeof fe
       }
 
       if (response.status === 401) return { ok: false, kind: 'expired' }
-      if (response.status === 403) return { ok: false, kind: 'denied' }
+      if (response.status === 403) {
+        const code = await response
+          .clone()
+          .json()
+          .then((body: { code?: unknown }) => body.code)
+          .catch(() => null)
+        if (code === 'STAFF_PENDING_ACTIVATION') return { ok: false, kind: 'pending' }
+        return { ok: false, kind: 'denied' }
+      }
       if (!response.ok) return { ok: false, kind: 'unavailable' }
 
       try {

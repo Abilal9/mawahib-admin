@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import type { AdminRecords, AdminRoute, OperationsOverview, StaffDispute, StaffUserDetail, StaffUserSummary } from './staff/adminTypes'
+import { InvitationScreen } from './staff/InvitationScreen'
 import { StaffPortal } from './staff/StaffPortal'
 import type { StaffAccessClient, StaffAuthClient } from './staff/types'
 
@@ -130,10 +131,14 @@ function previewOperations(mode: string): OperationsOverview {
 const previewRoot: { current: Root | null } = { current: null }
 
 export function mountPreview(element: HTMLElement, mode: string) {
+  const invitation = previewInvitation(mode)
   previewRoot.current = createRoot(element)
   previewRoot.current.render(
     <StrictMode>
       <p className="preview-banner">Preview only. This is not a staff session.</p>
+      {invitation ? (
+        <InvitationScreen state={invitation} />
+      ) : (
       <StaffPortal
         auth={previewAuth(mode)}
         access={previewAccess(mode)}
@@ -142,8 +147,22 @@ export function mountPreview(element: HTMLElement, mode: string) {
         initialNotice={previewNotice(mode)}
         startConfirming={mode === 'user-confirm'}
       />
+      )}
     </StrictMode>,
   )
+}
+
+function previewInvitation(mode: string) {
+  if (mode === 'invite-received') return { name: 'loading' as const }
+  if (mode === 'invite-password') return { name: 'password' as const, purpose: 'invite' as const, error: null, busy: false }
+  if (mode === 'recovery-password') return { name: 'password' as const, purpose: 'recovery' as const, error: null, busy: false }
+  if (mode === 'invite-invalid') return { name: 'invalid' as const }
+  if (mode === 'invite-expired') return { name: 'expired' as const }
+  if (mode === 'invite-enroll') return { name: 'enroll' as const, error: null, busy: false }
+  if (mode === 'invite-waiting') return { name: 'waiting' as const }
+  if (mode === 'invite-failure') return { name: 'failure' as const }
+  if (mode === 'invite-interrupted') return { name: 'interrupted' as const }
+  return null
 }
 
 const previewSecret = 'PREVIEW-SECRET-NOT-A-REAL-FACTOR'

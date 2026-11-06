@@ -1,9 +1,13 @@
-import { StrictMode } from 'react'
+import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createAdminRecords } from './staff/adminApi'
+import { InvitationGate } from './staff/InvitationGate'
+import { readInviteCallback } from './staff/invitationCallback'
+import { readInviteStep, writeInviteStep } from './staff/invitationFlow'
+import { createInviteAcceptance } from './staff/invitationAuth'
 import { StaffPortal } from './staff/StaffPortal'
 import { createStaffAccessClient } from './staff/staffAccess'
-import { createBrowserStaffAuth } from './staff/supabaseAuth'
+import { createStaffBrowserClient, createSupabaseStaffAuth } from './staff/supabaseAuth'
 import './staff/staff.css'
 
 const root = document.getElementById('root')
@@ -31,13 +35,17 @@ if (preview) {
       </StrictMode>,
     )
   } else {
-    const auth = createBrowserStaffAuth(url as string, key as string)
+    const client = createStaffBrowserClient(url as string, key as string)
+    const auth = createSupabaseStaffAuth(client)
+    const access = createStaffAccessClient(api as string)
+    const records = createAdminRecords(api as string, async () => (await auth.getSession()).accessToken)
     createRoot(root).render(
       <StrictMode>
-        <StaffPortal
+        <ConfiguredPortal
           auth={auth}
-          access={createStaffAccessClient(api as string)}
-          records={createAdminRecords(api as string, async () => (await auth.getSession()).accessToken)}
+          access={access}
+          records={records}
+          invite={createInviteAcceptance(client)}
           onEnterDemo={import.meta.env.DEV ? () => {
             const next = new URL(window.location.href)
             next.searchParams.set('demo', '1')
@@ -47,6 +55,32 @@ if (preview) {
       </StrictMode>,
     )
   }
+}
+
+function ConfiguredPortal({
+  auth,
+  access,
+  records,
+  invite,
+  onEnterDemo,
+}: {
+  auth: ReturnType<typeof createSupabaseStaffAuth>
+  access: ReturnType<typeof createStaffAccessClient>
+  records: ReturnType<typeof createAdminRecords>
+  invite: ReturnType<typeof createInviteAcceptance>
+  onEnterDemo?: () => void
+}) {
+  const [ready, setReady] = useState(() => {
+    const callback = readInviteCallback(window.location.search, window.location.hash)
+    const step = readInviteStep(window.sessionStorage)
+    if (callback.kind === 'absent' && step !== 'password' && step !== 'accepting' && step !== 'recovery') {
+      if (step) writeInviteStep(window.sessionStorage, null)
+      return true
+    }
+    return false
+  })
+  if (!ready) return <InvitationGate invite={invite} onReady={() => setReady(true)} />
+  return <StaffPortal auth={auth} access={access} records={records} onEnterDemo={onEnterDemo} />
 }
 
 function ConfigurationMissing() {

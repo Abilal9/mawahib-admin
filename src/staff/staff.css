@@ -13,23 +13,45 @@ body {
   margin: 0;
 }
 
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+}
+
 .shell {
+  width: 100%;
+  max-width: 100%;
   min-height: 100vh;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   padding: 24px 16px;
 }
 
 .card.wide {
-  width: min(100%, 880px);
+  width: 100%;
+  max-width: 880px;
 }
 
 .card {
-  width: min(100%, 440px);
+  width: 100%;
+  max-width: 440px;
+  min-width: 0;
   background: #ffffff;
   border-radius: 16px;
   padding: 28px 24px;
   box-shadow: 0 12px 40px rgba(14, 36, 58, 0.08);
+  overflow-wrap: anywhere;
+}
+
+.card p,
+.card h1,
+.card label {
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .brand {
@@ -45,6 +67,7 @@ h1 {
   margin: 0 0 8px;
   font-size: 1.6rem;
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 h1:focus {
@@ -53,6 +76,7 @@ h1:focus {
 
 p {
   margin: 0 0 16px;
+  overflow-wrap: anywhere;
 }
 
 form {
@@ -190,15 +214,26 @@ button:focus-visible {
 }
 
 @media (max-width: 640px) {
+  .shell {
+    align-items: stretch;
+    padding: 16px;
+  }
+
+  .card,
   .card.wide {
-    padding: 20px 16px;
+    width: calc(100% - 32px);
+    max-width: calc(100% - 32px);
+    align-self: center;
+    padding: 24px 16px;
   }
 }
 
 .preview-banner {
   margin: 0;
   padding: 8px 16px;
+  max-width: 100%;
   background: #fff4d6;
   color: #0e243a;
   text-align: center;
+  overflow-wrap: anywhere;
 }
