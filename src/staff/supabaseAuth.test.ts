@@ -29,6 +29,7 @@ function createFakeClient() {
       })),
       challenge: vi.fn(async () => ({ data: { id: 'challenge-1' }, error: null })),
       verify: vi.fn(async () => ({ data: {}, error: { message: 'expired' } })),
+      unenroll: vi.fn(async () => ({ data: {}, error: null })),
     },
   }
   return { client: { auth } as unknown as SupabaseClient, auth, unsubscribe }
@@ -77,6 +78,19 @@ describe('createSupabaseStaffAuth', () => {
     await expect(staff.verify({ factorId: 'totp-new', challengeId: 'challenge-1', code: '000000' })).resolves.toEqual({
       error: 'verify-failed',
     })
+  })
+
+  it('removes only an unverified authenticator factor', async () => {
+    const { client, auth } = createFakeClient()
+    const staff = createSupabaseStaffAuth(client)
+    await expect(staff.unenrollUnverified('totp-1')).resolves.toEqual({ ok: false, error: 'not-unverified' })
+    expect(auth.mfa.unenroll).not.toHaveBeenCalled()
+    auth.mfa.listFactors.mockResolvedValueOnce({
+      data: { all: [{ id: 'abandoned', factor_type: 'totp', status: 'unverified' }] },
+      error: null,
+    } as never)
+    await expect(staff.unenrollUnverified('abandoned')).resolves.toEqual({ ok: true })
+    expect(auth.mfa.unenroll).toHaveBeenCalledWith({ factorId: 'abandoned' })
   })
 
   it('shows a setup QR only for a plain image data URL', () => {

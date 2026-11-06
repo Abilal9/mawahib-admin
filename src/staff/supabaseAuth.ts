@@ -64,6 +64,17 @@ export function createSupabaseStaffAuth(client: SupabaseClient): StaffAuthClient
       if (error || data.type !== 'totp' || !data.totp.secret) return { ok: false as const, error: 'enroll-failed' }
       return { ok: true as const, factorId: data.id, secret: data.totp.secret, qrCode: safeSetupQr(data.totp.qr_code) }
     },
+    async unenrollUnverified(factorId) {
+      const { data, error } = await client.auth.mfa.listFactors()
+      if (error) return { ok: false as const, error: 'unenroll-failed' }
+      const factor = data.all.find((item) => item.id === factorId)
+      if (!factor || factor.factor_type !== 'totp' || factor.status === 'verified') {
+        return { ok: false as const, error: 'not-unverified' }
+      }
+      const removed = await client.auth.mfa.unenroll({ factorId })
+      if (removed.error) return { ok: false as const, error: 'unenroll-failed' }
+      return { ok: true as const }
+    },
     async challenge(factorId) {
       const { data, error } = await client.auth.mfa.challenge({ factorId })
       if (error) return { ok: false as const, error: 'challenge-failed' }

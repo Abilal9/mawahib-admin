@@ -25,6 +25,7 @@ export type StaffAuthClient = {
   assuranceLevel(): Promise<'aal1' | 'aal2' | null>
   listFactors(): Promise<AuthFactor[]>
   enrollTotp(): Promise<{ ok: true; factorId: string; secret: string; qrCode: string | null } | { ok: false; error: string }>
+  unenrollUnverified(factorId: string): Promise<{ ok: true } | { ok: false; error: string }>
   challenge(factorId: string): Promise<{ ok: true; challengeId: string } | { ok: false; error: string }>
   verify(input: { factorId: string; challengeId: string; code: string }): Promise<{ error: string | null }>
   onAuthStateChange(listener: (event: StaffAuthEvent, session: StaffSessionSnapshot) => void): () => void
@@ -42,6 +43,7 @@ export type PortalState =
   | { name: 'initializing' }
   | { name: 'signed-out'; error: string | null; busy: boolean }
   | { name: 'setup-required'; error: string | null; busy: boolean }
+  | { name: 'enrollment-interrupted'; factorId: string; error: string | null; busy: boolean }
   | { name: 'enrolling'; factorId: string; secret: string; qrCode: string | null; error: string | null; busy: boolean }
   | { name: 'challenge'; factorId: string; challengeId: string | null; error: string | null; busy: boolean }
   | { name: 'checking' }

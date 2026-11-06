@@ -197,6 +197,9 @@ function previewAuth(mode: string): StaffAuthClient {
     async enrollTotp() {
       return { ok: true, factorId: 'preview-factor', secret: previewSecret, qrCode: previewQr }
     },
+    async unenrollUnverified() {
+      return { ok: true }
+    },
     async challenge() {
       return { ok: true, challengeId: 'preview-challenge' }
     },

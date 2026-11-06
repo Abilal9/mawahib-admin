@@ -124,6 +124,26 @@ function PortalBody({
     )
   }
 
+  if (state.name === 'enrollment-interrupted') {
+    return (
+      <>
+        <h1 id="portal-title" ref={headingRef} tabIndex={-1}>
+          Authenticator setup was interrupted
+        </h1>
+        <p>The previous setup was not finished. Start again to get a new code. This does not activate staff access.</p>
+        {state.error ? <p role="alert">{state.error}</p> : null}
+        <div className="actions">
+          <button type="button" onClick={() => void session.restartEnrollment()} disabled={state.busy}>
+            {state.busy ? 'Setting up' : 'Set up authenticator again'}
+          </button>
+          <button type="button" className="secondary" onClick={() => void session.signOut()}>
+            Sign out
+          </button>
+        </div>
+      </>
+    )
+  }
+
   if (state.name === 'enrolling') {
     return (
       <CodeForm

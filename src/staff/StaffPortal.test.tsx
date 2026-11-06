@@ -38,7 +38,8 @@ function createHarness(options: FakeOptions = {}) {
   let signOutGate: Deferred<void> | null = null
   let signOutShouldFail = false
   let verifyError: string | null = null
-  const counts = { signIn: 0, enroll: 0, verify: 0, signOut: 0, challenge: 0 }
+  const counts = { signIn: 0, enroll: 0, verify: 0, signOut: 0, challenge: 0, unenroll: 0 }
+  let unenrollShouldFail = false
 
   const auth: StaffAuthClient = {
     async getSession() {
@@ -73,6 +74,16 @@ function createHarness(options: FakeOptions = {}) {
       if (enrollGate) return enrollGate.promise
       factors = [...factors, { id: 'factor-new', factorType: 'totp', status: 'unverified' }]
       return { ok: true, factorId: 'factor-new', secret: 'ENROLL-SECRET', qrCode: null }
+    },
+    async unenrollUnverified(factorId) {
+      counts.unenroll += 1
+      const factor = factors.find((item) => item.id === factorId)
+      if (unenrollShouldFail) return { ok: false, error: 'unenroll-failed' }
+      if (!factor || factor.factorType !== 'totp' || factor.status !== 'unverified') {
+        return { ok: false, error: 'not-unverified' }
+      }
+      factors = factors.filter((item) => item.id !== factorId)
+      return { ok: true }
     },
     async challenge() {
       counts.challenge += 1
@@ -119,6 +130,12 @@ function createHarness(options: FakeOptions = {}) {
     },
     failVerification() {
       verifyError = 'invalid'
+    },
+    failUnenroll() {
+      unenrollShouldFail = true
+    },
+    factorStatuses() {
+      return factors.map((factor) => `${factor.id}:${factor.status}`)
     },
     setAccessResults(results: StaffAccessResult[]) {
       scriptedChecks = [...results]
@@ -272,8 +289,42 @@ describe('StaffPortal', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Set up authenticator' }))
     expect(await screen.findByLabelText('Setup secret')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Cancel setup' }))
-    expect(await screen.findByRole('heading', { name: 'Administrator help required' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Authenticator setup required' })).toBeTruthy()
     expect(screen.queryByDisplayValue('ENROLL-SECRET')).toBeNull()
+    expect(harness.counts.unenroll).toBe(1)
+    expect(harness.factorStatuses()).toEqual([])
+  })
+
+  it('restarts one abandoned unverified authenticator and leaves a verified factor alone', async () => {
+    const harness = createHarness({
+      accessToken: 'token-1',
+      userId: 'user-1',
+      level: 'aal1',
+      factors: [
+        { id: 'abandoned', factorType: 'totp', status: 'unverified' },
+        { id: 'kept', factorType: 'totp', status: 'verified' },
+      ],
+    })
+    render(<StaffPortal auth={harness.auth} access={harness.access} />)
+    expect(await screen.findByRole('heading', { name: 'Administrator help required' })).toBeTruthy()
+    expect(harness.counts.unenroll).toBe(0)
+    expect(harness.factorStatuses()).toEqual(['abandoned:unverified', 'kept:verified'])
+  })
+
+  it('replaces one abandoned unverified authenticator with a new setup', async () => {
+    const harness = createHarness({
+      accessToken: 'token-1',
+      userId: 'user-1',
+      level: 'aal1',
+      factors: [{ id: 'abandoned', factorType: 'totp', status: 'unverified' }],
+    })
+    render(<StaffPortal auth={harness.auth} access={harness.access} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Set up authenticator again' }))
+    expect(await screen.findByLabelText('Setup secret')).toHaveProperty('value', 'ENROLL-SECRET')
+    expect(harness.counts.unenroll).toBe(1)
+    expect(harness.counts.enroll).toBe(1)
+    expect(harness.factorStatuses()).toEqual(['factor-new:unverified'])
+    expect(harness.checks).toEqual([])
   })
 
   it('challenges an existing authenticator and keeps an expired code on that screen', async () => {

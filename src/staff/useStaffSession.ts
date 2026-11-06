@@ -126,7 +126,7 @@ export function useStaffSession(auth: StaffAuthClient, access: StaffAccessClient
         return
       }
       clearDraft()
-      commit({ name: 'operator-help' })
+      commit({ name: 'enrollment-interrupted', factorId: step.factorId, error: null, busy: false })
       return
     }
     if (step.kind === 'verified') {
@@ -239,6 +239,10 @@ export function useStaffSession(auth: StaffAuthClient, access: StaffAccessClient
       if (step.kind !== 'setup') {
         busyRef.current = false
         clearDraft()
+        if (step.kind === 'unverified') {
+          commit({ name: 'enrollment-interrupted', factorId: step.factorId, error: 'Authenticator setup is temporarily unavailable. Try again.', busy: false })
+          return
+        }
         commit({ name: 'operator-help' })
         return
       }
@@ -324,10 +328,49 @@ export function useStaffSession(auth: StaffAuthClient, access: StaffAccessClient
     await resolve(epoch)
   }
 
-  function cancelEnrollment() {
-    if (busyRef.current) return
-    clearDraft()
-    commit({ name: 'operator-help' })
+  async function restartEnrollment() {
+    if (busyRef.current || state.name !== 'enrollment-interrupted') return
+    busyRef.current = true
+    const epoch = ++epochRef.current
+    const factorId = state.factorId
+    commit({ name: 'enrollment-interrupted', factorId, error: null, busy: true })
+    try {
+      const removed = await authRef.current.unenrollUnverified(factorId)
+      if (!isCurrent(epoch)) return
+      busyRef.current = false
+      if (!removed.ok) {
+        commit({ name: 'enrollment-interrupted', factorId, error: 'Authenticator setup is temporarily unavailable. Try again.', busy: false })
+        return
+      }
+      await beginEnrollment()
+    } catch {
+      if (!isCurrent(epoch)) return
+      busyRef.current = false
+      commit({ name: 'enrollment-interrupted', factorId, error: 'Authenticator setup is temporarily unavailable. Try again.', busy: false })
+    }
+  }
+
+  async function cancelEnrollment() {
+    if (busyRef.current || state.name !== 'enrolling') return
+    busyRef.current = true
+    const epoch = ++epochRef.current
+    const current = state
+    commit({ ...current, error: null, busy: true })
+    try {
+      const removed = await authRef.current.unenrollUnverified(current.factorId)
+      if (!isCurrent(epoch)) return
+      busyRef.current = false
+      if (!removed.ok) {
+        commit({ ...current, error: 'Authenticator setup is temporarily unavailable. Try again.', busy: false })
+        return
+      }
+      clearDraft()
+      commit({ name: 'setup-required', error: null, busy: false })
+    } catch {
+      if (!isCurrent(epoch)) return
+      busyRef.current = false
+      commit({ ...current, error: 'Authenticator setup is temporarily unavailable. Try again.', busy: false })
+    }
   }
 
   async function signOut() {
@@ -378,6 +421,7 @@ export function useStaffSession(auth: StaffAuthClient, access: StaffAccessClient
     state,
     signIn,
     beginEnrollment,
+    restartEnrollment,
     verifyCode,
     cancelEnrollment,
     signOut,
