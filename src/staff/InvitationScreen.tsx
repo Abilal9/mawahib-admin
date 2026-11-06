@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type RefObject } from 'react'
 import { PasswordField } from './PasswordField'
+import { SignOutButton } from './SignOutButton'
 
 export type InvitationScreenState =
   | { name: 'loading' }
@@ -56,7 +57,7 @@ export function InvitationScreen({ state, onPassword, onRetry, onEnroll, onSignO
             <h1 id="invite-title" ref={headingRef} tabIndex={-1}>Another staff session is open</h1>
             <p role="alert">Sign out of the current staff account before accepting this invitation.</p>
             <div className="actions">
-              <button type="button" onClick={onSignOut}>Sign out</button>
+              {onSignOut ? <SignOutButton onSignOut={onSignOut} /> : null}
             </div>
           </>
         ) : null}
@@ -105,7 +106,7 @@ export function InvitationScreen({ state, onPassword, onRetry, onEnroll, onSignO
             <h1 id="invite-title" ref={headingRef} tabIndex={-1}>Waiting for activation</h1>
             <p>Your password and authenticator are saved. This account stays closed until an administrator activates it.</p>
             <div className="actions">
-              <button type="button" onClick={onSignOut}>Sign out</button>
+              {onSignOut ? <SignOutButton onSignOut={onSignOut} /> : null}
             </div>
           </>
         ) : null}

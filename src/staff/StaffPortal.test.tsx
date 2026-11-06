@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { StaffPortal } from './StaffPortal'
 import type { AuthFactor, StaffAccessResult, StaffAuthClient, StaffAuthEvent } from './types'
@@ -21,6 +21,11 @@ type FakeOptions = {
   userId?: string | null
   level?: 'aal1' | 'aal2' | null
   factors?: AuthFactor[]
+}
+
+function confirmSignOut() {
+  fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+  fireEvent.click(within(screen.getByRole('dialog', { name: 'Sign out?' })).getByRole('button', { name: 'Sign out' }))
 }
 
 function createHarness(options: FakeOptions = {}) {
@@ -277,7 +282,7 @@ describe('StaffPortal', () => {
     await signIn(harness)
     await screen.findByRole('button', { name: 'Set up authenticator' })
     fireEvent.click(screen.getByRole('button', { name: 'Set up authenticator' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    confirmSignOut()
     await act(async () => {
       pending.resolve({ ok: true, factorId: 'late-factor', secret: 'LATE-SECRET', qrCode: null })
     })
@@ -430,6 +435,7 @@ describe('StaffPortal', () => {
     harness.setAccessResults([{ ok: false, kind: 'expired' }])
     render(<StaffPortal auth={harness.auth} access={harness.access} />)
     expect(await screen.findByText('Your session has expired. Sign in again.')).toBeTruthy()
+    expect(screen.queryByRole('dialog', { name: 'Sign out?' })).toBeNull()
     expect(harness.counts.signOut).toBe(1)
   })
 
@@ -580,6 +586,9 @@ describe('StaffPortal', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Set up authenticator' }))
     expect(await screen.findByDisplayValue('ENROLL-SECRET')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    expect(screen.getByRole('dialog', { name: 'Sign out?' })).toBeTruthy()
+    expect(screen.getByDisplayValue('ENROLL-SECRET')).toBeTruthy()
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Sign out?' })).getByRole('button', { name: 'Sign out' }))
     expect(screen.queryByDisplayValue('ENROLL-SECRET')).toBeNull()
     expect(screen.getByRole('heading', { name: 'Staff sign in' })).toBeTruthy()
     await act(async () => {
@@ -602,7 +611,7 @@ describe('StaffPortal', () => {
     ])
     render(<StaffPortal auth={harness.auth} access={harness.access} />)
     expect(await screen.findByRole('heading', { name: 'Staff session' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    confirmSignOut()
     expect(await screen.findByText('Sign-out did not complete. This session is still active.')).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'Staff session' })).toBeTruthy()
     expect(harness.checks).toEqual(['token-1', 'token-1'])

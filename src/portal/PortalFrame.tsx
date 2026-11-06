@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { SignOutButton } from '../staff/SignOutButton'
 import '../demo/demo.css'
 
 export const PORTAL_SECTIONS = [
@@ -21,6 +22,7 @@ export function PortalFrame({
   onNavigate,
   onSignOut,
   signOutLabel,
+  confirmSignOut = false,
   showBack = false,
   onBack,
   children,
@@ -31,6 +33,7 @@ export function PortalFrame({
   onNavigate: (section: PortalSection) => void
   onSignOut: () => void
   signOutLabel: string
+  confirmSignOut?: boolean
   showBack?: boolean
   onBack?: () => void
   children: ReactNode
@@ -51,9 +54,15 @@ export function PortalFrame({
             </button>
           ))}
         </nav>
-        <button type="button" className="secondary" onClick={onSignOut}>
-          {signOutLabel}
-        </button>
+        {confirmSignOut ? (
+          <SignOutButton className="secondary" onSignOut={onSignOut}>
+            {signOutLabel}
+          </SignOutButton>
+        ) : (
+          <button type="button" className="secondary" onClick={onSignOut}>
+            {signOutLabel}
+          </button>
+        )}
       </aside>
       <main className="demo-main">
         {banner ? <p className="demo-banner">{banner}</p> : null}

@@ -81,8 +81,8 @@ export function InvitationGate({ invite, onReady }: InvitationGateProps) {
           setView(result)
         })
       }}
-      onSignOut={() => {
-        void invite.signOut().then(
+      onSignOut={() =>
+        invite.signOut().then(
           () =>
             start(invite, captureInviteCallback(), 'signed-out').then(async (result) => {
               if (result.name === 'password') {
@@ -95,7 +95,7 @@ export function InvitationGate({ invite, onReady }: InvitationGateProps) {
             }),
           () => setView({ name: 'conflict' }),
         )
-      }}
+      }
     />
   )
 }

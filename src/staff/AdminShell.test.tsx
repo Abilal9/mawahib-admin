@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AdminShell } from './AdminShell'
@@ -400,6 +400,7 @@ describe('AdminShell', () => {
     render(<Session />)
     expect(await screen.findByRole('heading', { name: 'Loading records' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Sign out?' })).getByRole('button', { name: 'Sign out' }))
     expect(screen.getByText('Signed out')).toBeTruthy()
     await act(async () => {
       resolveLate({ ok: true, data: { items: [user], nextCursor: null } })

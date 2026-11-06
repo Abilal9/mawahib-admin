@@ -190,6 +190,46 @@ button:focus-visible {
   color: #0e243a;
 }
 
+.sign-out-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(14, 36, 58, 0.45);
+}
+
+.sign-out-dialog {
+  width: 100%;
+  max-width: 420px;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 24px 20px;
+  box-shadow: 0 12px 40px rgba(14, 36, 58, 0.16);
+}
+
+.sign-out-dialog h2 {
+  margin: 0 0 8px;
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.sign-out-dialog .actions {
+  margin-top: 16px;
+}
+
+.sign-out-dialog .actions button {
+  flex: 1 1 140px;
+}
+
+@media (min-width: 640px) {
+  .sign-out-layer {
+    align-items: center;
+  }
+}
+
 .nav {
   display: flex;
   flex-wrap: wrap;

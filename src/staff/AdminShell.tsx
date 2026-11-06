@@ -94,6 +94,7 @@ export function AdminShell({
       onNavigate={navigate}
       onSignOut={onSignOut}
       signOutLabel="Sign out"
+      confirmSignOut
       showBack={route.name !== 'home'}
       onBack={() => open(backRoute(route))}
     >

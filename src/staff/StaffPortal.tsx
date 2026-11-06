@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type RefObject } from 'react'
 import { PasswordField } from './PasswordField'
+import { SignOutButton } from './SignOutButton'
 import { AdminShell } from './AdminShell'
 import type { AdminRecords, AdminRoute } from './adminTypes'
 import type { StaffAccessClient, StaffAuthClient } from './types'
@@ -36,7 +37,7 @@ export function StaffPortal({ auth, access, records, initialRoute, initialNotice
       <AdminShell
         records={records}
         initialRoute={initialRoute}
-        onSignOut={() => void session.signOut()}
+        onSignOut={() => session.signOut()}
         onAccessDenied={denyRecords}
         initialNotice={initialNotice}
         startConfirming={startConfirming}
@@ -117,9 +118,7 @@ function PortalBody({
           <button type="button" onClick={() => void session.beginEnrollment()} disabled={state.busy}>
             {state.busy ? 'Setting up' : 'Set up authenticator'}
           </button>
-          <button type="button" className="secondary" onClick={() => void session.signOut()}>
-            Sign out
-          </button>
+          <SignOutButton className="secondary" onSignOut={() => session.signOut()} />
         </div>
       </>
     )
@@ -137,9 +136,7 @@ function PortalBody({
           <button type="button" onClick={() => void session.restartEnrollment()} disabled={state.busy}>
             {state.busy ? 'Setting up' : 'Set up authenticator again'}
           </button>
-          <button type="button" className="secondary" onClick={() => void session.signOut()}>
-            Sign out
-          </button>
+          <SignOutButton className="secondary" onSignOut={() => session.signOut()} />
         </div>
       </>
     )
@@ -158,7 +155,7 @@ function PortalBody({
         submitLabel="Verify code"
         onSubmit={(code) => void session.verifyCode(code)}
         onCancel={session.cancelEnrollment}
-        onSignOut={() => void session.signOut()}
+        onSignOut={() => session.signOut()}
       />
     )
   }
@@ -174,7 +171,7 @@ function PortalBody({
         submitLabel="Verify code"
         onSubmit={(code) => void session.verifyCode(code)}
         onRetry={state.challengeId === null ? () => void session.retryChallenge() : undefined}
-        onSignOut={() => void session.signOut()}
+        onSignOut={() => session.signOut()}
       />
     )
   }
@@ -187,9 +184,7 @@ function PortalBody({
         </h1>
         <p role="alert">Staff access is not active for this account. Contact your administrator.</p>
         <div className="actions">
-          <button type="button" onClick={() => void session.signOut()}>
-            Sign out
-          </button>
+          <SignOutButton onSignOut={() => session.signOut()} />
         </div>
       </>
     )
@@ -201,7 +196,7 @@ function PortalBody({
         <AdminShell
           records={records}
           initialRoute={initialRoute}
-          onSignOut={() => void session.signOut()}
+          onSignOut={() => session.signOut()}
           onAccessDenied={onAccessDenied}
           initialNotice={initialNotice}
           startConfirming={startConfirming}
@@ -215,9 +210,7 @@ function PortalBody({
         </h1>
         <p>Role: Operator</p>
         <div className="actions">
-          <button type="button" onClick={() => void session.signOut()}>
-            Sign out
-          </button>
+          <SignOutButton onSignOut={() => session.signOut()} />
         </div>
       </>
     )
@@ -231,9 +224,7 @@ function PortalBody({
         </h1>
         <p>Your password and authenticator are saved. An administrator still has to activate this staff account before it can open the portal.</p>
         <div className="actions">
-          <button type="button" onClick={() => void session.signOut()}>
-            Sign out
-          </button>
+          <SignOutButton onSignOut={() => session.signOut()} />
         </div>
       </>
     )
@@ -247,9 +238,7 @@ function PortalBody({
         </h1>
         <p role="alert">Staff access is not active for this account. Contact your administrator.</p>
         <div className="actions">
-          <button type="button" onClick={() => void session.signOut()}>
-            Sign out
-          </button>
+          <SignOutButton onSignOut={() => session.signOut()} />
         </div>
       </>
     )
@@ -266,9 +255,7 @@ function PortalBody({
           <button type="button" onClick={() => void session.retryAuthentication()}>
             Try again
           </button>
-          <button type="button" className="secondary" onClick={() => void session.signOut()}>
-            Sign out
-          </button>
+          <SignOutButton className="secondary" onSignOut={() => session.signOut()} />
         </div>
       </>
     )
@@ -285,9 +272,7 @@ function PortalBody({
           <button type="button" onClick={() => void session.retryStaffCheck()}>
             Try again
           </button>
-          <button type="button" className="secondary" onClick={() => void session.signOut()}>
-            Sign out
-          </button>
+          <SignOutButton className="secondary" onSignOut={() => session.signOut()} />
         </div>
       </>
     )
@@ -300,9 +285,7 @@ function PortalBody({
       </h1>
       <p role="alert">This account’s authenticator setup needs an administrator. Contact your administrator.</p>
       <div className="actions">
-        <button type="button" onClick={() => void session.signOut()}>
-          Sign out
-        </button>
+        <SignOutButton onSignOut={() => session.signOut()} />
       </div>
     </>
   )
@@ -453,9 +436,7 @@ function CodeForm({
               Cancel setup
             </button>
           ) : null}
-          <button type="button" className="secondary" onClick={onSignOut}>
-            Sign out
-          </button>
+          <SignOutButton className="secondary" onSignOut={onSignOut} />
         </div>
       </form>
     </>
