@@ -346,6 +346,7 @@ describe('StaffPortal', () => {
 
     render(<StaffPortal auth={unavailable.auth} access={unavailable.access} />)
     expect(await screen.findByText('The staff service is temporarily unavailable. Try again.')).toBeTruthy()
+    expect(unavailable.counts.signOut).toBe(0)
     expect(screen.queryByText('Staff access is not active for this account. Contact your administrator.')).toBeNull()
   })
 
