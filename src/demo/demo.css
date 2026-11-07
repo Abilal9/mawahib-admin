@@ -389,6 +389,12 @@
   justify-content: space-between;
   gap: 12px;
   align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.metric-value,
+.metric-detail {
+  overflow-wrap: anywhere;
 }
 
 .ops-card h3 {

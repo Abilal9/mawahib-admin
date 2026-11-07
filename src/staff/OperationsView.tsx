@@ -72,13 +72,6 @@ function OperationCard({ card }: { card: OperationsCard }) {
       <p>{shortExplanation(card)}</p>
       <p className="ops-time">{readingLine(card)}</p>
       {card.stale ? <p className="ops-warning">{staleWarning(card)}</p> : null}
-      {card.state === 'not_configured' ? <p className="ops-warning">This provider is not configured, so there is no reading.</p> : null}
-      {card.id === 'supabase_backup' && card.state === 'up' && !card.stale ? (
-        <p className="ops-warning">A completed backup record does not prove the backup can be restored.</p>
-      ) : null}
-      {card.id === 'railway' && card.state === 'up' && !card.stale ? (
-        <p className="ops-warning">A successful deployment is not proof the application is currently healthy.</p>
-      ) : null}
       <div className="ops-links">
         <details>
           <summary>Details</summary>
@@ -138,7 +131,7 @@ function confirmedWord(card: OperationsCard): string {
 }
 
 function needsAttention(card: OperationsCard): boolean {
-  return card.stale || card.state === 'down' || card.state === 'unavailable' || card.state === 'unknown' || card.state === 'not_configured' || card.state === 'not_available' || card.state === 'degraded'
+  return card.stale || card.state === 'down' || card.state === 'unavailable' || card.state === 'unknown' || card.state === 'not_configured' || card.state === 'not_available' || card.state === 'degraded' || card.state === 'paused'
 }
 
 function plainTitle(id: OperationsCard['id']): string {

@@ -105,7 +105,7 @@ function previewOperations(mode: string): OperationsOverview {
       state: mode === 'operations-unconfigured' ? 'not_configured' : mode === 'operations-incident' ? 'down' : 'up',
       summary:
         mode === 'operations-unconfigured'
-          ? 'Not configured. Set OPS_UPTIMEROBOT_READ_TOKEN and OPS_UPTIMEROBOT_MONITOR_ID on the server.'
+          ? 'The production monitor is not set up. This does not mean the service is down.'
           : mode === 'operations-incident'
             ? 'UptimeRobot reports this monitor as DOWN. This is a periodic observation, not a deployment check.'
             : 'UptimeRobot reports this monitor as UP. This is a periodic observation, not a deployment check.',
@@ -122,7 +122,7 @@ function previewOperations(mode: string): OperationsOverview {
         mode === 'operations-incident'
           ? [{ at: '2026-11-05T09:40:00.000Z', label: 'DOWN' }]
           : [],
-      dashboardUrl: 'https://dashboard.uptimerobot.com/',
+      dashboardUrl: 'https://dashboard.uptimerobot.com/monitors/794581023',
     },
   ]
   return { generatedAt: '2026-11-05T10:00:00.000Z', cards }

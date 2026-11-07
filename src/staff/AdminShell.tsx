@@ -182,29 +182,82 @@ function titleFor(route: AdminRoute, view: View): string {
 }
 
 function Overview({ overview, onOpen, onRefresh }: { overview: OperationsOverview | null; onOpen: (route: AdminRoute) => void; onRefresh: () => void }) {
+  const monitoring = monitoringHeadline(overview)
   return (
     <>
       <p className="section-note">Shortcuts open the sections this portal can read. Counts are omitted where no total is available.</p>
       <div className="demo-metrics">
         <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'users', query: '', cursor: null })}>
           <span className="metric-title">Users</span>
-          <span className="metric-value">Not connected</span>
-          <span className="metric-detail">Lookup is available. There is no total count.</span>
+          <span className="metric-value">Search users</span>
+          <span className="metric-detail">Total not available</span>
         </button>
         <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'disputes', cursor: null })}>
           <span className="metric-title">Disputes</span>
-          <span className="metric-value">Not connected</span>
-          <span className="metric-detail">The open queue is available. There is no total count.</span>
+          <span className="metric-value">View open disputes</span>
+          <span className="metric-detail">Total not available</span>
         </button>
         <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'operations' })}>
           <span className="metric-title">Monitoring</span>
-          <span className="metric-value">{overview ? 'Connected' : 'Not connected'}</span>
-          <span className="metric-detail">{overview ? 'Provider readings are below. A reading is not a global total.' : 'The monitoring summary did not load.'}</span>
+          <span className="metric-value">{monitoring.value}</span>
+          <span className="metric-detail">{monitoring.detail}</span>
         </button>
       </div>
       {overview ? <OperationsView overview={overview} embedded onRefresh={onRefresh} /> : <p>Monitoring readings are not available right now.</p>}
     </>
   )
+}
+
+function monitoringHeadline(overview: OperationsOverview | null): { value: string; detail: string } {
+  if (!overview) return { value: 'Unavailable', detail: 'The monitoring summary did not load.' }
+  const cards = overview.cards
+  const count = (matches: (card: OperationsOverview['cards'][number]) => boolean) => cards.filter(matches).length
+  const outages = count((card) => !card.stale && card.id === 'uptime' && card.state === 'down')
+  const failedReadings = count((card) => !card.stale && card.state === 'down' && card.id !== 'uptime')
+  const failed = count((card) => !card.stale && (card.state === 'unavailable' || card.state === 'unknown'))
+  const stale = count((card) => card.stale)
+  const missing = count((card) => !card.stale && card.state === 'not_configured')
+  const unsupported = count((card) => !card.stale && card.state === 'not_available')
+  const degraded = count((card) => !card.stale && (card.state === 'degraded' || card.state === 'paused'))
+  const current = count((card) => !card.stale && card.state === 'up')
+  if (outages > 0) {
+    return {
+      value: 'Outage reported',
+      detail: 'The production monitor reports a service outage.',
+    }
+  }
+  if (failedReadings > 0) {
+    return {
+      value: 'Needs attention',
+      detail: `${failedReadings} ${failedReadings === 1 ? 'reading failed' : 'readings failed'}. That is not a service outage.`,
+    }
+  }
+  if (failed > 0) {
+    return {
+      value: 'Check failed',
+      detail: `${failed} ${failed === 1 ? 'provider check failed' : 'provider checks failed'}. A failed check is not an outage.`,
+    }
+  }
+  if (stale > 0) {
+    return {
+      value: 'Stale readings',
+      detail: `${stale} ${stale === 1 ? 'reading is' : 'readings are'} out of date.`,
+    }
+  }
+  if (missing > 0 || unsupported > 0) {
+    const parts = []
+    if (missing > 0) parts.push(`${missing} not set up`)
+    if (unsupported > 0) parts.push(`${unsupported} not available on the current plan`)
+    if (current > 0) parts.push(`${current} current`)
+    return { value: 'Setup incomplete', detail: `${parts.join(', ')}. A missing integration is not an outage.` }
+  }
+  if (degraded > 0) {
+    return {
+      value: 'Needs attention',
+      detail: `${degraded} ${degraded === 1 ? 'reading is' : 'readings are'} degraded or paused.`,
+    }
+  }
+  return { value: 'Readings current', detail: 'No reading in this summary is missing, stale, or down.' }
 }
 
 function Placeholder({ section }: { section: PlaceholderSection }) {

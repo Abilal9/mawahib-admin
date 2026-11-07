@@ -522,10 +522,75 @@ describe('AdminShell', () => {
     expect(calls).toBe(2)
   })
 
+  it('derives the monitoring shortcut from the readings', async () => {
+    const { unmount } = render(
+      <AdminShell
+        records={records({
+          async operations() {
+            return {
+              ok: true,
+              data: operationsOverview([
+                { state: 'not_configured', summary: 'Deployment status is not set up.' },
+                { state: 'up' },
+                { state: 'not_configured' },
+                { state: 'not_available' },
+                { state: 'not_configured' },
+              ]),
+            }
+          },
+        })}
+        onSignOut={() => undefined}
+      />,
+    )
+    expect(await screen.findByText('Setup incomplete')).toBeTruthy()
+    expect(screen.getByText(/A missing integration is not an outage/)).toBeTruthy()
+    unmount()
+
+    render(
+      <AdminShell
+        records={records({
+          async operations() {
+            return { ok: true, data: operationsOverview([{ state: 'down', summary: 'UptimeRobot reports this monitor as DOWN.' }]) }
+          },
+        })}
+        onSignOut={() => undefined}
+      />,
+    )
+    expect(await screen.findByText('Needs attention')).toBeTruthy()
+    expect(screen.getByText('1 reading failed. That is not a service outage.')).toBeTruthy()
+    unmount()
+
+    render(
+      <AdminShell
+        records={records({
+          async operations() {
+            return {
+              ok: true,
+              data: operationsOverview([
+                {},
+                {},
+                {},
+                {},
+                { state: 'down', summary: 'UptimeRobot reports this monitor as DOWN.' },
+              ]),
+            }
+          },
+        })}
+        onSignOut={() => undefined}
+      />,
+    )
+    expect(await screen.findByText('Outage reported')).toBeTruthy()
+    expect(screen.getByText('The production monitor reports a service outage.')).toBeTruthy()
+  })
+
   it('shows placeholders instead of demo records and does not invent overview totals', async () => {
     render(<AdminShell records={records()} onSignOut={() => undefined} />)
     expect(await screen.findByRole('heading', { name: 'Overview' })).toBeTruthy()
-    expect(screen.getAllByText('Not connected').length).toBeGreaterThan(0)
+    expect(screen.getByText('Search users')).toBeTruthy()
+    expect(screen.getAllByText('Total not available')).toHaveLength(2)
+    expect(screen.getByText('View open disputes')).toBeTruthy()
+    expect(screen.getByText('Readings current')).toBeTruthy()
+    expect(screen.queryByText('Not connected')).toBeNull()
     expect(screen.queryByText(/^0$/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Marketplace' }))
     expect(await screen.findByText(/Marketplace oversight is not connected/)).toBeTruthy()
