@@ -1,9 +1,10 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
-import type { AccountActionRecord, AdminRecords, AdminResult, AdminRoute, OperationsOverview, StaffDispute, StaffUserDetail, StaffUserSummary } from './adminTypes'
+import type { AccountActionRecord, AdminRecords, AdminResult, AdminRoute, OperationsOverview, ReportListQuery, StaffDispute, StaffReportDetail, StaffReportSummary, StaffUserDetail, StaffUserSummary } from './adminTypes'
 import { OPERATIONS_POLL_MS, OperationsView } from './OperationsView'
+import { ReportDetail, ReportsList } from './ReportsView'
 import { PortalFrame, type PortalSection } from '../portal/PortalFrame'
 
-type PlaceholderSection = 'marketplace' | 'reports' | 'payments' | 'staff'
+type PlaceholderSection = 'marketplace' | 'payments' | 'staff'
 
 type View =
   | { name: 'loading' }
@@ -13,6 +14,8 @@ type View =
   | { name: 'disputes'; items: StaffDispute[]; nextCursor: string | null }
   | { name: 'dispute'; dispute: StaffDispute }
   | { name: 'operations'; overview: OperationsOverview }
+  | { name: 'reports'; status: ReportListQuery['status']; targetType: ReportListQuery['targetType']; items: StaffReportSummary[]; nextCursor: string | null }
+  | { name: 'report'; report: StaffReportDetail }
   | { name: 'placeholder'; section: PlaceholderSection }
   | { name: 'empty'; message: string }
   | { name: 'denied' }
@@ -157,6 +160,18 @@ export function AdminShell({
       ) : null}
       {view.name === 'dispute' ? <DisputeDetail dispute={view.dispute} /> : null}
       {view.name === 'operations' ? <OperationsView overview={view.overview} embedded onRefresh={() => setReload((value) => value + 1)} /> : null}
+      {view.name === 'reports' ? (
+        <ReportsList
+          items={view.items}
+          status={view.status}
+          targetType={view.targetType}
+          nextCursor={view.nextCursor}
+          onFilter={(status, targetType) => open({ name: 'reports', status, targetType, cursor: null })}
+          onOpen={(id) => open({ name: 'report', id })}
+          onMore={() => open({ name: 'reports', status: view.status, targetType: view.targetType, cursor: view.nextCursor })}
+        />
+      ) : null}
+      {view.name === 'report' ? <ReportDetail report={view.report} records={records} onChanged={() => setReload((value) => value + 1)} /> : null}
     </PortalFrame>
   )
 }
@@ -166,6 +181,7 @@ function navigateSection(section: PortalSection): AdminRoute {
   if (section === 'users') return { name: 'users', query: '', cursor: null }
   if (section === 'disputes') return { name: 'disputes', cursor: null }
   if (section === 'operations') return { name: 'operations' }
+  if (section === 'reports') return { name: 'reports', status: 'open', targetType: 'all', cursor: null }
   return { name: section }
 }
 
@@ -173,6 +189,7 @@ function sectionFor(route: AdminRoute): PortalSection {
   if (route.name === 'home') return 'overview'
   if (route.name === 'user') return 'users'
   if (route.name === 'dispute') return 'disputes'
+  if (route.name === 'report') return 'reports'
   if (route.name === 'marketplace' || route.name === 'reports' || route.name === 'payments' || route.name === 'staff') return route.name
   return route.name
 }
@@ -191,6 +208,7 @@ function titleFor(route: AdminRoute, view: View): string {
   if (route.name === 'operations') return 'Monitoring'
   if (route.name === 'marketplace') return 'Marketplace'
   if (route.name === 'reports') return 'Reports'
+  if (route.name === 'report') return 'Report'
   if (route.name === 'payments') return 'Payments'
   return 'Staff'
 }
@@ -277,7 +295,6 @@ function monitoringHeadline(overview: OperationsOverview | null): { value: strin
 function Placeholder({ section }: { section: PlaceholderSection }) {
   const copy = {
     marketplace: 'Marketplace oversight is not connected. Jobs, services, applications, and engagements will appear here when that API exists.',
-    reports: 'Report submission and moderation are the next milestone after this portal. No report queue is connected.',
     payments: 'Payment and invoice lists are not connected. A dispute can still show its own simulated payment when the dispute API includes one.',
     staff: 'Staff invitations and activation stay on operator commands. This screen does not invite, activate, or hold credentials.',
   }[section]
@@ -508,6 +525,7 @@ function accountStatusMessage(result: { outcome: 'changed' | 'unchanged' | 'obse
 function backRoute(route: AdminRoute): AdminRoute {
   if (route.name === 'user') return { name: 'users', query: '', cursor: null }
   if (route.name === 'dispute') return { name: 'disputes', cursor: null }
+  if (route.name === 'report') return { name: 'reports', status: 'open', targetType: 'all', cursor: null }
   return { name: 'home' }
 }
 
@@ -518,7 +536,7 @@ function formatWhen(value: string): string {
 }
 
 async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
-  if (route.name === 'marketplace' || route.name === 'reports' || route.name === 'payments' || route.name === 'staff') {
+  if (route.name === 'marketplace' || route.name === 'payments' || route.name === 'staff') {
     return { name: 'placeholder', section: route.name }
   }
   if (route.name === 'home') {
@@ -561,6 +579,18 @@ async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
   if (route.name === 'operations') {
     return fromOne(await records.operations(), (overview) => ({ name: 'operations', overview }))
   }
+  if (route.name === 'reports') {
+    const result = await records.reports({ status: route.status, targetType: route.targetType, cursor: route.cursor })
+    if (!result.ok) return failure(result.kind)
+    return {
+      name: 'reports',
+      status: route.status,
+      targetType: route.targetType,
+      items: result.data.items,
+      nextCursor: result.data.nextCursor,
+    }
+  }
+  if (route.name === 'report') return fromOne(await records.report(route.id), (report) => ({ name: 'report', report }))
   return fromOne(await records.dispute(route.id), (dispute) => ({ name: 'dispute', dispute }))
 }
 

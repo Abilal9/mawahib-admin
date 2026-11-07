@@ -293,6 +293,24 @@ button:focus-visible {
   }
 }
 
+.report-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.report-filters button,
+#report-note {
+  min-height: 44px;
+}
+
+#report-note {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 .preview-banner {
   margin: 0;
   padding: 8px 16px;

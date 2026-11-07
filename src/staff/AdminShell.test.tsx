@@ -65,6 +65,15 @@ function records(partial: Partial<AdminRecords> = {}): AdminRecords {
     async operations() {
       return { ok: true, data: operationsOverview() }
     },
+    async reports() {
+      return { ok: true, data: { items: [], nextCursor: null } }
+    },
+    async report() {
+      return { ok: false as const, kind: 'not-found' as const }
+    },
+    async setReportStatus() {
+      return { ok: true as const, data: { id: 'report', status: 'resolved' } }
+    },
     ...partial,
   }
 }
@@ -617,7 +626,7 @@ describe('AdminShell', () => {
     expect(await screen.findByText(/Marketplace oversight is not connected/)).toBeTruthy()
     expect(screen.queryByText('Omar Al-Harbi')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Reports' }))
-    expect(await screen.findByText(/next milestone after this portal/)).toBeTruthy()
+    expect(await screen.findByText('No reports match these filters.')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Payments' }))
     expect(await screen.findByText(/Payment and invoice lists are not connected/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Staff' }))

@@ -74,6 +74,30 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
     operations() {
       return get<OperationsOverview>('/admin/operations')
     },
+    reports(query) {
+      const params = new URLSearchParams()
+      if (query.status !== 'all') params.set('status', query.status)
+      if (query.targetType !== 'all') params.set('targetType', query.targetType)
+      if (query.cursor) params.set('cursor', query.cursor)
+      const suffix = params.size > 0 ? `?${params.toString()}` : ''
+      return get(`/admin/reports${suffix}`)
+    },
+    report(id) {
+      return get(`/admin/reports/${encodeURIComponent(id)}`)
+    },
+    async setReportStatus(id, input) {
+      try {
+        const response = await send(`/admin/reports/${encodeURIComponent(id)}/status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+        })
+        return classify(response)
+      } catch (error) {
+        if (error instanceof MissingToken) return { ok: false, kind: 'expired' }
+        return { ok: false, kind: 'uncertain' }
+      }
+    },
   }
 }
 

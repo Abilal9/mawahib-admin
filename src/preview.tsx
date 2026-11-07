@@ -335,6 +335,15 @@ function previewRecords(mode: string): AdminRecords {
       if (mode === 'operations-denied') return { ok: false, kind: 'denied' }
       return { ok: true, data: previewOperations(mode) }
     },
+    async reports() {
+      return { ok: true, data: { items: [], nextCursor: null } }
+    },
+    async report() {
+      return { ok: false, kind: 'not-found' }
+    },
+    async setReportStatus() {
+      return { ok: false, kind: 'unavailable' }
+    },
   }
 }
 

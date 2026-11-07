@@ -40,6 +40,37 @@ export type StaffDispute = {
   payment: StaffDisputePayment | null
 }
 
+export type StaffReportSummary = {
+  id: string
+  targetType: 'post_comment' | 'work_request'
+  reason: string
+  status: 'open' | 'resolved' | 'dismissed'
+  createdAt: string
+  statusChangedAt: string | null
+  hasDetails: boolean
+  reportedUser: { id: string; displayName: string; accountStatus: string; deleted: boolean } | null
+}
+
+export type StaffReportDetail = {
+  id: string
+  targetType: 'post_comment' | 'work_request'
+  reason: string
+  details: string | null
+  status: 'open' | 'resolved' | 'dismissed'
+  createdAt: string
+  statusChangedAt: string | null
+  reporter: { id: string; displayName: string; accountStatus: string; deleted: boolean } | null
+  reportedUser: StaffReportSummary['reportedUser']
+  target: Record<string, unknown>
+  history: Array<{ id: string; action: string; note: string | null; createdAt: string }>
+}
+
+export type ReportListQuery = {
+  status: 'open' | 'resolved' | 'dismissed' | 'all'
+  targetType: 'all' | 'post_comment' | 'work_request'
+  cursor: string | null
+}
+
 export type AdminPage<T> = {
   items: T[]
   nextCursor: string | null
@@ -82,6 +113,12 @@ export type AdminRecords = {
   disputes(cursor: string | null): Promise<AdminResult<AdminPage<StaffDispute>>>
   dispute(id: string): Promise<AdminResult<StaffDispute>>
   operations(): Promise<AdminResult<OperationsOverview>>
+  reports(query: ReportListQuery): Promise<AdminResult<AdminPage<StaffReportSummary>>>
+  report(id: string): Promise<AdminResult<StaffReportDetail>>
+  setReportStatus(
+    id: string,
+    input: { status: 'open' | 'resolved' | 'dismissed'; expectedStatus: 'open' | 'resolved' | 'dismissed'; note: string },
+  ): Promise<AdminResult<{ id: string; status: string }>>
 }
 
 export type AdminRoute =
@@ -91,8 +128,9 @@ export type AdminRoute =
   | { name: 'disputes'; cursor: string | null }
   | { name: 'dispute'; id: string }
   | { name: 'operations' }
+  | { name: 'reports'; status: ReportListQuery['status']; targetType: ReportListQuery['targetType']; cursor: string | null }
+  | { name: 'report'; id: string }
   | { name: 'marketplace' }
-  | { name: 'reports' }
   | { name: 'payments' }
   | { name: 'staff' }
 
