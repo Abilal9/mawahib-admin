@@ -45,6 +45,11 @@ export type AdminPage<T> = {
   nextCursor: string | null
 }
 
+export type StaffUserPage = AdminPage<StaffUserSummary> & {
+  totalUsers: number
+  matchCount: number
+}
+
 export type AccountActionRecord = {
   id: string
   action: 'account_suspended' | 'account_restored'
@@ -67,7 +72,7 @@ export type AdminResult<T> =
   | { ok: false; kind: 'denied' | 'expired' | 'unavailable' | 'not-found' | 'conflict' | 'ineligible' | 'uncertain' }
 
 export type AdminRecords = {
-  searchUsers(query: string, cursor: string | null): Promise<AdminResult<AdminPage<StaffUserSummary>>>
+  searchUsers(query: string, cursor: string | null): Promise<AdminResult<StaffUserPage>>
   user(id: string): Promise<AdminResult<StaffUserDetail>>
   setAccountStatus(
     id: string,

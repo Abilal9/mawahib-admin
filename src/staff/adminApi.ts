@@ -30,9 +30,12 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
 
   return {
     searchUsers(query, cursor) {
-      const params = new URLSearchParams({ q: query })
+      const params = new URLSearchParams()
+      const trimmed = query.trim()
+      if (trimmed) params.set('q', trimmed)
       if (cursor) params.set('cursor', cursor)
-      return get(`/admin/users?${params.toString()}`)
+      const suffix = params.size > 0 ? `?${params.toString()}` : ''
+      return get(`/admin/users${suffix}`)
     },
     user(id) {
       return get(`/admin/users/${encodeURIComponent(id)}`)

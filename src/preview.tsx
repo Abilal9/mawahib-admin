@@ -281,8 +281,8 @@ function previewRecords(mode: string): AdminRecords {
   return {
     async searchUsers() {
       if (usersFailed) return { ok: false, kind: 'unavailable' }
-      if (usersEmpty) return { ok: true, data: { items: [], nextCursor: null } }
-      return { ok: true, data: { items: [previewUser], nextCursor: null } }
+      if (usersEmpty) return { ok: true, data: { items: [], nextCursor: null, totalUsers: 0, matchCount: 0 } }
+      return { ok: true, data: { items: [previewUser], nextCursor: null, totalUsers: 1, matchCount: 1 } }
     },
     async user() {
       const suspended = mode === 'user-suspended' || mode === 'user-success' || mode === 'user-unchanged'

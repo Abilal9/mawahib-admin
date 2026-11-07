@@ -33,7 +33,7 @@ const dispute: StaffDispute = {
 function records(partial: Partial<AdminRecords> = {}): AdminRecords {
   return {
     async searchUsers() {
-      return { ok: true, data: { items: [user], nextCursor: 'page-2' } }
+      return { ok: true as const, data: { items: [user], nextCursor: 'page-2', totalUsers: 3, matchCount: 1 } }
     },
     async user() {
       return {
@@ -104,7 +104,7 @@ describe('AdminShell', () => {
             seen.push(cursor)
             return {
               ok: true,
-              data: { items: [{ ...user, displayName: cursor ? 'Page Two' : 'Ada Preview' }], nextCursor: cursor ? null : 'page-2' },
+              data: { items: [{ ...user, displayName: cursor ? 'Page Two' : 'Ada Preview' }], nextCursor: cursor ? null : 'page-2', totalUsers: 3, matchCount: 2 },
             }
           },
         })}
@@ -123,12 +123,28 @@ describe('AdminShell', () => {
     expect(await screen.findByRole('heading', { name: 'Users' })).toBeTruthy()
   })
 
+  it('does not show zero users when the list cannot be loaded', async () => {
+    render(
+      <AdminShell
+        records={records({
+          async searchUsers() {
+            return { ok: false, kind: 'unavailable' }
+          },
+        })}
+        initialRoute={{ name: 'users', query: '', cursor: null }}
+        onSignOut={() => undefined}
+      />,
+    )
+    expect(await screen.findByText('The staff service is temporarily unavailable. Try again.')).toBeTruthy()
+    expect(screen.queryByText(/Total users: 0/)).toBeNull()
+  })
+
   it('shows an empty search and a service failure without invented records', async () => {
     const empty = render(
       <AdminShell
         records={records({
           async searchUsers() {
-            return { ok: true, data: { items: [], nextCursor: null } }
+            return { ok: true, data: { items: [], nextCursor: null, totalUsers: 4, matchCount: 0 } }
           },
         })}
         initialRoute={{ name: 'users', query: 'nobody', cursor: null }}
@@ -136,6 +152,8 @@ describe('AdminShell', () => {
       />,
     )
     expect(await screen.findByText('No accounts match that search.')).toBeTruthy()
+    expect(screen.getByText('Total users: 4')).toBeTruthy()
+    expect(screen.getByText('Matching accounts: 0')).toBeTruthy()
     empty.unmount()
 
     render(
@@ -187,7 +205,7 @@ describe('AdminShell', () => {
                 resolveLate = resolve
               })
             }
-            return { ok: true, data: { items: [{ ...user, email: 'current@example.com', displayName: 'Current Result' }], nextCursor: null } }
+            return { ok: true, data: { items: [{ ...user, email: 'current@example.com', displayName: 'Current Result' }], nextCursor: null, totalUsers: 3, matchCount: 1 } }
           },
         })}
         initialRoute={{ name: 'users', query: 'old', cursor: null }}
@@ -195,11 +213,11 @@ describe('AdminShell', () => {
       />,
     )
     expect(await screen.findByRole('heading', { name: 'Loading records' })).toBeTruthy()
-    fireEvent.change(screen.getByLabelText('Email, username, or account id'), { target: { value: 'current' } })
+    fireEvent.change(screen.getByLabelText('Name, username, email, or account id'), { target: { value: 'current' } })
     fireEvent.click(screen.getByRole('button', { name: 'Search' }))
     expect(await screen.findByText('Current Result')).toBeTruthy()
     await act(async () => {
-      resolveLate({ ok: true, data: { items: [user], nextCursor: null } })
+      resolveLate({ ok: true, data: { items: [user], nextCursor: null, totalUsers: 3, matchCount: 1 } })
     })
     expect(screen.getByText('Current Result')).toBeTruthy()
     expect(screen.queryByText('Ada Preview')).toBeNull()
@@ -389,7 +407,7 @@ describe('AdminShell', () => {
                   resolveLate = resolve
                 })
               }
-              return { ok: true, data: { items: [{ ...user, displayName: 'Current Result' }], nextCursor: null } }
+              return { ok: true, data: { items: [{ ...user, displayName: 'Current Result' }], nextCursor: null, totalUsers: 3, matchCount: 1 } }
             },
           })}
           initialRoute={{ name: 'users', query: 'late', cursor: null }}
@@ -403,7 +421,7 @@ describe('AdminShell', () => {
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Sign out?' })).getByRole('button', { name: 'Sign out' }))
     expect(screen.getByText('Signed out')).toBeTruthy()
     await act(async () => {
-      resolveLate({ ok: true, data: { items: [user], nextCursor: null } })
+      resolveLate({ ok: true, data: { items: [user], nextCursor: null, totalUsers: 3, matchCount: 1 } })
     })
     expect(screen.queryByText('Ada Preview')).toBeNull()
   })
@@ -492,7 +510,7 @@ describe('AdminShell', () => {
     )
     expect(await screen.findByRole('heading', { name: 'Loading records' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Users' }))
-    expect(await screen.findByText('Search by email, username, or account id.')).toBeTruthy()
+    expect(await screen.findByText('Ada Preview')).toBeTruthy()
     await act(async () => {
       resolveLate({ ok: true, data: operationsOverview([{ summary: 'Late railway reading' }]) })
     })
@@ -586,9 +604,10 @@ describe('AdminShell', () => {
   it('shows placeholders instead of demo records and does not invent overview totals', async () => {
     render(<AdminShell records={records()} onSignOut={() => undefined} />)
     expect(await screen.findByRole('heading', { name: 'Overview' })).toBeTruthy()
-    expect(screen.getByText('Search users')).toBeTruthy()
-    expect(screen.getAllByText('Total not available')).toHaveLength(2)
+    expect(screen.getByText('Total users')).toBeTruthy()
+    expect(screen.getByText('3')).toBeTruthy()
     expect(screen.getByText('View open disputes')).toBeTruthy()
+    expect(screen.getByText('Total not available')).toBeTruthy()
     expect(screen.getByText('Readings current')).toBeTruthy()
     expect(screen.queryByText('Not connected')).toBeNull()
     expect(screen.queryByText(/^0$/)).toBeNull()

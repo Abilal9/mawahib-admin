@@ -7,8 +7,8 @@ type PlaceholderSection = 'marketplace' | 'reports' | 'payments' | 'staff'
 
 type View =
   | { name: 'loading' }
-  | { name: 'overview'; overview: OperationsOverview | null }
-  | { name: 'users'; query: string; items: StaffUserSummary[]; nextCursor: string | null }
+  | { name: 'overview'; overview: OperationsOverview | null; userTotal: number | null }
+  | { name: 'users'; query: string; items: StaffUserSummary[]; nextCursor: string | null; totalUsers: number; matchCount: number }
   | { name: 'user'; user: StaffUserDetail }
   | { name: 'disputes'; items: StaffDispute[]; nextCursor: string | null }
   | { name: 'dispute'; dispute: StaffDispute }
@@ -98,8 +98,18 @@ export function AdminShell({
       showBack={route.name !== 'home'}
       onBack={() => open(backRoute(route))}
     >
-      <SearchForm searchId={searchId} query={query} setQuery={setQuery} onSubmit={submitSearch} show={route.name === 'users'} />
-      {view.name === 'overview' ? <Overview overview={view.overview} onOpen={open} onRefresh={() => setReload((value) => value + 1)} /> : null}
+      <SearchForm
+        searchId={searchId}
+        query={query}
+        setQuery={setQuery}
+        onSubmit={submitSearch}
+        onClear={() => {
+          setQuery('')
+          open({ name: 'users', query: '', cursor: null })
+        }}
+        show={route.name === 'users'}
+      />
+      {view.name === 'overview' ? <Overview overview={view.overview} userTotal={view.userTotal} onOpen={open} onRefresh={() => setReload((value) => value + 1)} /> : null}
       {view.name === 'denied' ? <p role="alert">Staff access is not active for this account. Contact your administrator.</p> : null}
       {view.name === 'expired' ? <p role="alert">Your session has expired. Sign in again.</p> : null}
       {view.name === 'unavailable' ? <p role="alert">The staff service is temporarily unavailable. Try again.</p> : null}
@@ -108,6 +118,10 @@ export function AdminShell({
       {view.name === 'placeholder' ? <Placeholder section={view.section} /> : null}
       {view.name === 'users' ? (
         <div className="demo-list">
+          <p>Total users: {view.totalUsers}</p>
+          {view.query.trim() ? <p>Matching accounts: {view.matchCount}</p> : null}
+          <p className="quiet-note">Pages are loaded separately. Accounts added or removed can change a later page.</p>
+          {view.items.length === 0 ? <p>{view.query.trim() ? 'No accounts match that search.' : 'No product accounts are listed.'}</p> : null}
           {view.items.map((user) => (
             <article key={user.id} className="demo-row">
               <div>
@@ -181,16 +195,16 @@ function titleFor(route: AdminRoute, view: View): string {
   return 'Staff'
 }
 
-function Overview({ overview, onOpen, onRefresh }: { overview: OperationsOverview | null; onOpen: (route: AdminRoute) => void; onRefresh: () => void }) {
+function Overview({ overview, userTotal, onOpen, onRefresh }: { overview: OperationsOverview | null; userTotal: number | null; onOpen: (route: AdminRoute) => void; onRefresh: () => void }) {
   const monitoring = monitoringHeadline(overview)
   return (
     <>
-      <p className="section-note">Shortcuts open the sections this portal can read. Counts are omitted where no total is available.</p>
+      <p className="section-note">Total users counts application accounts that are not deleted, including suspended accounts. Other sections omit a total when one is not available.</p>
       <div className="demo-metrics">
         <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'users', query: '', cursor: null })}>
-          <span className="metric-title">Users</span>
-          <span className="metric-value">Search users</span>
-          <span className="metric-detail">Total not available</span>
+          <span className="metric-title">Total users</span>
+          <span className="metric-value">{userTotal === null ? 'Unavailable' : String(userTotal)}</span>
+          <span className="metric-detail">Active and suspended accounts</span>
         </button>
         <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'disputes', cursor: null })}>
           <span className="metric-title">Disputes</span>
@@ -275,21 +289,28 @@ function SearchForm({
   query,
   setQuery,
   onSubmit,
+  onClear,
   show,
 }: {
   searchId: string
   query: string
   setQuery: (value: string) => void
   onSubmit: (event: FormEvent) => void
+  onClear: () => void
   show: boolean
 }) {
   if (!show) return null
   return (
     <form className="demo-filters" onSubmit={onSubmit}>
-      <label htmlFor={searchId}>Email, username, or account id</label>
+      <label htmlFor={searchId}>Name, username, email, or account id</label>
       <input id={searchId} name="q" value={query} onChange={(event) => setQuery(event.target.value)} />
       <div className="actions">
         <button type="submit">Search</button>
+        {query.trim() ? (
+          <button type="button" className="secondary" onClick={onClear}>
+            Clear
+          </button>
+        ) : null}
       </div>
     </form>
   )
@@ -501,18 +522,33 @@ async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
     return { name: 'placeholder', section: route.name }
   }
   if (route.name === 'home') {
-    const result = await records.operations()
-    if (!result.ok && (result.kind === 'denied' || result.kind === 'expired')) return failure(result.kind)
-    return { name: 'overview', overview: result.ok ? result.data : null }
+    const [operationsResult, usersResult] = await Promise.all([
+      records.operations(),
+      records.searchUsers('', null),
+    ])
+    if (!operationsResult.ok && (operationsResult.kind === 'denied' || operationsResult.kind === 'expired')) {
+      return failure(operationsResult.kind)
+    }
+    if (!usersResult.ok && (usersResult.kind === 'denied' || usersResult.kind === 'expired')) {
+      return failure(usersResult.kind)
+    }
+    return {
+      name: 'overview',
+      overview: operationsResult.ok ? operationsResult.data : null,
+      userTotal: usersResult.ok ? usersResult.data.totalUsers : null,
+    }
   }
   if (route.name === 'users') {
-    if (!route.query) return { name: 'empty', message: 'Search by email, username, or account id.' }
-    return fromPage(await records.searchUsers(route.query, route.cursor), 'No accounts match that search.', (page) => ({
+    const result = await records.searchUsers(route.query, route.cursor)
+    if (!result.ok) return failure(result.kind)
+    return {
       name: 'users',
       query: route.query,
-      items: page.items,
-      nextCursor: page.nextCursor,
-    }))
+      items: result.data.items,
+      nextCursor: result.data.nextCursor,
+      totalUsers: result.data.totalUsers,
+      matchCount: result.data.matchCount,
+    }
   }
   if (route.name === 'user') return fromOne(await records.user(route.id), (user) => ({ name: 'user', user }))
   if (route.name === 'disputes') {
