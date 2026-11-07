@@ -42,7 +42,7 @@ export type StaffDispute = {
 
 export type StaffReportSummary = {
   id: string
-  targetType: 'post_comment' | 'work_request'
+  targetType: 'post_comment' | 'work_request' | 'user' | 'post' | 'engagement_review' | 'job_listing' | 'service_offering'
   reason: string
   status: 'open' | 'resolved' | 'dismissed'
   createdAt: string
@@ -53,7 +53,7 @@ export type StaffReportSummary = {
 
 export type StaffReportDetail = {
   id: string
-  targetType: 'post_comment' | 'work_request'
+  targetType: 'post_comment' | 'work_request' | 'user' | 'post' | 'engagement_review' | 'job_listing' | 'service_offering'
   reason: string
   details: string | null
   status: 'open' | 'resolved' | 'dismissed'
@@ -67,7 +67,7 @@ export type StaffReportDetail = {
 
 export type ReportListQuery = {
   status: 'open' | 'resolved' | 'dismissed' | 'all'
-  targetType: 'all' | 'post_comment' | 'work_request'
+  targetType: 'all' | 'post_comment' | 'work_request' | 'user' | 'post' | 'engagement_review' | 'job_listing' | 'service_offering'
   cursor: string | null
 }
 

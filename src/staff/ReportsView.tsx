@@ -12,6 +12,11 @@ const TARGETS: Array<{ id: ReportListQuery['targetType']; label: string }> = [
   { id: 'all', label: 'All' },
   { id: 'post_comment', label: 'Comment' },
   { id: 'work_request', label: 'Work request' },
+  { id: 'user', label: 'Account' },
+  { id: 'post', label: 'Post' },
+  { id: 'engagement_review', label: 'Review' },
+  { id: 'job_listing', label: 'Job' },
+  { id: 'service_offering', label: 'Service' },
 ]
 
 export function ReportsList({
@@ -137,11 +142,50 @@ function TargetContext({ target }: { target: StaffReportDetail['target'] }) {
   }
   const request = target.workRequest
   if (request && typeof request === 'object') {
-    const title = 'title' in request && typeof request.title === 'string' ? request.title : 'Untitled'
-    const status = 'status' in request && typeof request.status === 'string' ? request.status : state
-    return <p>Work request: {title} · {status}</p>
+    const title = textField(request, 'title') || 'Untitled'
+    const status = textField(request, 'status') || state
+    return <p>Work request: {title} · {status}{state === 'deleted' ? ' · Deleted' : ''}</p>
+  }
+  const post = target.post
+  if (post && typeof post === 'object') {
+    const excerpt = textField(post, 'excerpt')
+    return (
+      <>
+        <p>Post: {state === 'deleted' ? 'Deleted. This is not the current post.' : 'Available'}</p>
+        {excerpt ? <p>{excerpt}</p> : <p>No current text is available.</p>}
+      </>
+    )
+  }
+  const account = target.user
+  if (account && typeof account === 'object') {
+    return <p>Account: {textField(account, 'displayName') || 'Unavailable'} · {state === 'deleted' ? 'Deleted' : textField(account, 'accountStatus') || state}</p>
+  }
+  const review = target.review
+  if (review && typeof review === 'object') {
+    const body = textField(review, 'body')
+    const title = target.engagement && typeof target.engagement === 'object' ? textField(target.engagement, 'title') : ''
+    return (
+      <>
+        <p>Review: {state === 'deleted' ? 'Deleted. This is not the current review.' : 'Available'}{title ? ` · ${title}` : ''}</p>
+        {body ? <p>{body}</p> : <p>No current review text is available.</p>}
+      </>
+    )
+  }
+  const job = target.job
+  if (job && typeof job === 'object') {
+    return <p>Job: {textField(job, 'title') || 'Untitled'}{state === 'deleted' ? ' · Deleted' : ` · ${textField(job, 'status')}`}</p>
+  }
+  const service = target.service
+  if (service && typeof service === 'object') {
+    return <p>Service: {textField(service, 'title') || 'Untitled'}{state === 'deleted' ? ' · Deleted' : ` · ${textField(service, 'status')}`}</p>
   }
   return <p>Target state: {state}</p>
+}
+
+function textField(value: object, key: string): string {
+  if (!(key in value)) return ''
+  const field = (value as Record<string, unknown>)[key]
+  return typeof field === 'string' ? field : ''
 }
 
 function nextActions(status: StaffReportDetail['status']): Array<StaffReportDetail['status']> {
@@ -150,9 +194,7 @@ function nextActions(status: StaffReportDetail['status']): Array<StaffReportDeta
 }
 
 function labelTarget(value: string): string {
-  if (value === 'post_comment') return 'Comment'
-  if (value === 'work_request') return 'Work request'
-  return value
+  return TARGETS.find((item) => item.id === value)?.label ?? value
 }
 
 function labelReason(value: string): string {
