@@ -85,7 +85,12 @@ function OperationCard({ card }: { card: OperationsCard }) {
             <p key={`${incident.label}-${incident.at ?? index}`}>{incident.label}{incident.at ? ` at ${formatWhen(incident.at)}` : ''}</p>
           ))}
         </details>
-        {dashboard ? <a href={dashboard}>Open the provider dashboard</a> : <p>Dashboard link unavailable</p>}
+        {dashboard ? (
+          <a href={dashboard} target="_blank" rel="noopener noreferrer">
+            Open the provider dashboard
+            <span className="sr-only"> (opens in a new tab)</span>
+          </a>
+        ) : <p>Dashboard link unavailable</p>}
       </div>
     </article>
   )
