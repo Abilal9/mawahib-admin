@@ -48,12 +48,15 @@ export type StaffReportSummary = {
   createdAt: string
   statusChangedAt: string | null
   hasDetails: boolean
+  targetId: string
+  targetCounts: TargetReportCounts | null
   reportedUser: { id: string; displayName: string; accountStatus: string; deleted: boolean } | null
 }
 
 export type StaffReportDetail = {
   id: string
   targetType: 'post_comment' | 'work_request' | 'user' | 'post' | 'engagement_review' | 'job_listing' | 'service_offering'
+  targetId: string
   reason: string
   details: string | null
   status: 'open' | 'resolved' | 'dismissed'
@@ -61,6 +64,7 @@ export type StaffReportDetail = {
   statusChangedAt: string | null
   reporter: { id: string; displayName: string; accountStatus: string; deleted: boolean } | null
   reportedUser: StaffReportSummary['reportedUser']
+  targetCounts: TargetReportCounts | null
   target: Record<string, unknown>
   history: Array<{ id: string; action: string; actorLabel: string | null; note: string | null; createdAt: string }>
 }
@@ -68,9 +72,16 @@ export type StaffReportDetail = {
 export type ReportStatusFilter = 'open' | 'resolved' | 'dismissed'
 export type ReportTargetFilter = 'post_comment' | 'work_request' | 'user' | 'post' | 'engagement_review' | 'job_listing' | 'service_offering'
 
+export type TargetReportCounts = {
+  openReportCount: number
+  totalReportCount: number
+  uniqueReporterCount: number
+}
+
 export type ReportListQuery = {
   statuses: ReportStatusFilter[]
   targetTypes: ReportTargetFilter[]
+  exactTarget: { targetType: ReportTargetFilter; targetId: string } | null
   cursor: string | null
 }
 
@@ -141,7 +152,7 @@ export type AdminRoute =
   | { name: 'disputes'; cursor: string | null }
   | { name: 'dispute'; id: string }
   | { name: 'operations' }
-  | { name: 'reports'; statuses: ReportListQuery['statuses']; targetTypes: ReportListQuery['targetTypes']; cursor: string | null }
+  | ({ name: 'reports' } & ReportListQuery)
   | { name: 'report'; id: string; returnTo: ReportListQuery }
   | { name: 'marketplace' }
   | { name: 'payments' }

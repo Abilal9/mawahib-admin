@@ -15,7 +15,7 @@ type View =
   | { name: 'disputes'; items: StaffDispute[]; nextCursor: string | null }
   | { name: 'dispute'; dispute: StaffDispute }
   | { name: 'operations'; overview: OperationsOverview }
-  | { name: 'reports'; statuses: ReportListQuery['statuses']; targetTypes: ReportListQuery['targetTypes']; items: StaffReportSummary[]; nextCursor: string | null; matchCount: number | null; phase: 'loading' | 'ready' | 'unavailable' | 'denied' | 'expired' }
+  | { name: 'reports'; statuses: ReportListQuery['statuses']; targetTypes: ReportListQuery['targetTypes']; exactTarget: ReportListQuery['exactTarget']; items: StaffReportSummary[]; nextCursor: string | null; matchCount: number | null; phase: 'loading' | 'ready' | 'unavailable' | 'denied' | 'expired' }
   | { name: 'report'; report: StaffReportDetail; returnTo: ReportListQuery }
   | { name: 'placeholder'; section: PlaceholderSection }
   | { name: 'empty'; message: string }
@@ -53,6 +53,7 @@ export function AdminShell({
         name: 'reports',
         statuses: route.statuses,
         targetTypes: route.targetTypes,
+        exactTarget: route.exactTarget,
         items: [],
         nextCursor: null,
         matchCount: null,
@@ -180,12 +181,16 @@ export function AdminShell({
           items={view.items}
           statuses={view.statuses}
           targetTypes={view.targetTypes}
+          exactTarget={view.exactTarget}
           nextCursor={view.nextCursor}
           matchCount={view.matchCount}
           phase={view.phase}
-          onFilter={(statuses, targetTypes) => open({ name: 'reports', statuses, targetTypes, cursor: null })}
-          onOpen={(id) => open({ name: 'report', id, returnTo: { statuses: view.statuses, targetTypes: view.targetTypes, cursor: route.name === 'reports' ? route.cursor : null } })}
-          onMore={() => open({ name: 'reports', statuses: view.statuses, targetTypes: view.targetTypes, cursor: view.nextCursor })}
+          onFilter={(statuses, targetTypes) => open({ name: 'reports', statuses, targetTypes, exactTarget: view.exactTarget, cursor: null })}
+          onClearTarget={() => open({ name: 'reports', statuses: view.statuses, targetTypes: view.targetTypes, exactTarget: null, cursor: null })}
+          onReset={() => open({ name: 'reports', statuses: [], targetTypes: [], exactTarget: null, cursor: null })}
+          onOpen={(id) => open({ name: 'report', id, returnTo: { statuses: view.statuses, targetTypes: view.targetTypes, exactTarget: view.exactTarget, cursor: route.name === 'reports' ? route.cursor : null } })}
+          onRelated={(targetType, targetId) => open({ name: 'reports', statuses: view.statuses, targetTypes: view.targetTypes, exactTarget: { targetType, targetId }, cursor: null })}
+          onMore={() => open({ name: 'reports', statuses: view.statuses, targetTypes: view.targetTypes, exactTarget: view.exactTarget, cursor: view.nextCursor })}
         />
       ) : null}
       {view.name === 'report' ? (
@@ -194,6 +199,13 @@ export function AdminShell({
           records={records}
           onChanged={() => setReload((value) => value + 1)}
           onOpenAccount={(id) => open({ name: 'user', id })}
+          onRelated={() => open({
+            name: 'reports',
+            statuses: view.returnTo.statuses,
+            targetTypes: view.returnTo.targetTypes,
+            exactTarget: { targetType: view.report.targetType, targetId: view.report.targetId },
+            cursor: null,
+          })}
         />
       ) : null}
     </PortalFrame>
@@ -205,7 +217,7 @@ function navigateSection(section: PortalSection): AdminRoute {
   if (section === 'users') return { name: 'users', query: '', cursor: null }
   if (section === 'disputes') return { name: 'disputes', cursor: null }
   if (section === 'operations') return { name: 'operations' }
-  if (section === 'reports') return { name: 'reports', statuses: ['open'], targetTypes: [], cursor: null }
+  if (section === 'reports') return { name: 'reports', statuses: ['open'], targetTypes: [], exactTarget: null, cursor: null }
   return { name: section }
 }
 
@@ -248,7 +260,7 @@ function Overview({ overview, userTotal, reportTotals, onOpen, onRefresh }: { ov
           <span className="metric-value">{userTotal === null ? 'Unavailable' : String(userTotal)}</span>
           <span className="metric-detail">Active and suspended accounts</span>
         </button>
-        <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'reports', statuses: ['open'], targetTypes: [], cursor: null })}>
+        <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'reports', statuses: ['open'], targetTypes: [], exactTarget: null, cursor: null })}>
           <span className="metric-title">Open reports</span>
           <span className="metric-value">{reportTotals === null ? 'Unavailable' : String(reportTotals.openReports)}</span>
           <span className="metric-detail">{reportTotals === null ? 'Total not available' : `${reportTotals.totalReports} total reports`}</span>
@@ -622,6 +634,7 @@ async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
         name: 'reports',
         statuses: route.statuses,
         targetTypes: route.targetTypes,
+        exactTarget: route.exactTarget,
         items: [],
         nextCursor: null,
         matchCount: null,
@@ -632,6 +645,7 @@ async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
       name: 'reports',
       statuses: route.statuses,
       targetTypes: route.targetTypes,
+      exactTarget: route.exactTarget,
       items: result.data.items,
       nextCursor: result.data.nextCursor,
       matchCount: result.data.matchCount,

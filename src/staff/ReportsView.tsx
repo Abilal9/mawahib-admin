@@ -28,26 +28,41 @@ export function ReportsList({
   items,
   statuses,
   targetTypes,
+  exactTarget,
   nextCursor,
   matchCount,
   phase,
   onFilter,
+  onClearTarget,
+  onReset,
   onOpen,
+  onRelated,
   onMore,
 }: {
   items: StaffReportSummary[]
   statuses: ReportStatusFilter[]
   targetTypes: ReportTargetFilter[]
+  exactTarget: { targetType: ReportTargetFilter; targetId: string } | null
   nextCursor: string | null
   matchCount: number | null
   phase: 'loading' | 'ready' | 'unavailable' | 'denied' | 'expired'
   onFilter: (statuses: ReportStatusFilter[], targetTypes: ReportTargetFilter[]) => void
+  onClearTarget: () => void
+  onReset: () => void
   onOpen: (id: string) => void
+  onRelated: (targetType: ReportTargetFilter, targetId: string) => void
   onMore: () => void
 }) {
   return (
     <div className="demo-list">
-      <ReportFilters statuses={statuses} targetTypes={targetTypes} onFilter={onFilter} />
+      <ReportFilters
+        statuses={statuses}
+        targetTypes={targetTypes}
+        exactTarget={exactTarget}
+        onFilter={onFilter}
+        onClearTarget={onClearTarget}
+        onReset={onReset}
+      />
       <p>
         {phase === 'loading' ? <span className="metric-skeleton" aria-hidden="true" /> : matchCount === null ? 'Matching reports unavailable' : `Matching reports: ${matchCount}`}
       </p>
@@ -63,8 +78,12 @@ export function ReportsList({
               <p><strong>{labelTarget(item.targetType)}</strong> · {labelReason(item.reason)}</p>
               <p>{labelStatus(item.status)} · {formatWhen(item.createdAt)}</p>
               <p>Reported account: {item.reportedUser ? item.reportedUser.displayName : 'Unavailable'}</p>
+              <TargetCounts counts={item.targetCounts} />
             </div>
-            <button type="button" className="text-action" onClick={() => onOpen(item.id)}>View report</button>
+            <div className="report-row-actions">
+              <button type="button" className="text-action" onClick={() => onRelated(item.targetType, item.targetId)}>View related reports</button>
+              <button type="button" className="text-action" onClick={() => onOpen(item.id)}>View report</button>
+            </div>
           </article>
         )) : null}
         {phase === 'ready' && nextCursor ? <button type="button" onClick={onMore}>Next</button> : null}
@@ -76,11 +95,17 @@ export function ReportsList({
 function ReportFilters({
   statuses,
   targetTypes,
+  exactTarget,
   onFilter,
+  onClearTarget,
+  onReset,
 }: {
   statuses: ReportStatusFilter[]
   targetTypes: ReportTargetFilter[]
+  exactTarget: { targetType: ReportTargetFilter; targetId: string } | null
   onFilter: (statuses: ReportStatusFilter[], targetTypes: ReportTargetFilter[]) => void
+  onClearTarget: () => void
+  onReset: () => void
 }) {
   const [openMenu, setOpenMenu] = useState<'status' | 'target' | null>(null)
   const toggleStatus = (id: ReportStatusFilter) => {
@@ -121,13 +146,18 @@ function ReportFilters({
           </label>
         ))}
       </FilterMenu>
-      <button type="button" className="report-clear" onClick={() => onFilter([], [])}>Clear filters</button>
+      <button type="button" className="report-clear" onClick={onReset}>Clear filters</button>
       <div className="report-chips">
         {statuses.map((status) => (
           <button key={status} type="button" className="report-chip" onClick={() => toggleStatus(status)}>
             {labelStatus(status)} <span aria-hidden="true">×</span><span className="sr-only">Remove status filter</span>
           </button>
         ))}
+        {exactTarget ? (
+          <button type="button" className="report-chip" onClick={onClearTarget}>
+            This {labelTarget(exactTarget.targetType).toLowerCase()} <span aria-hidden="true">×</span><span className="sr-only">Remove target filter</span>
+          </button>
+        ) : null}
         {targetTypes.map((target) => (
           <button key={target} type="button" className="report-chip" onClick={() => toggleTarget(target)}>
             {labelTarget(target)} <span aria-hidden="true">×</span><span className="sr-only">Remove target filter</span>
@@ -209,11 +239,13 @@ export function ReportDetail({
   records,
   onChanged,
   onOpenAccount,
+  onRelated,
 }: {
   report: StaffReportDetail
   records: AdminRecords
   onChanged: () => void
   onOpenAccount: (id: string) => void
+  onRelated: () => void
 }) {
   const [note, setNote] = useState('')
   const [pending, setPending] = useState<StaffReportDetail['status'] | null>(null)
@@ -243,6 +275,8 @@ export function ReportDetail({
         <p><span className="report-badge">{labelStatus(report.status)}</span></p>
         <p>Submitted {formatWhen(report.createdAt)}</p>
         <p>Reference {report.id}</p>
+        <TargetCounts counts={report.targetCounts} />
+        <button type="button" className="text-action" onClick={onRelated}>View related reports</button>
       </header>
       <section className="report-panel">
         <h2>Reported content</h2>
@@ -369,6 +403,15 @@ function PersonLine({
       {label}: {person.displayName}{' '}
       <span className="report-badge">{person.deleted ? 'Deleted' : person.accountStatus}</span>{' '}
       <button type="button" className="text-action" onClick={() => onOpen(person.id)}>View account</button>
+    </p>
+  )
+}
+
+function TargetCounts({ counts }: { counts: StaffReportSummary['targetCounts'] }) {
+  if (!counts) return <p>Report counts unavailable</p>
+  return (
+    <p>
+      {counts.openReportCount} open · {counts.totalReportCount} total · {counts.uniqueReporterCount} unique reporters, all statuses
     </p>
   )
 }

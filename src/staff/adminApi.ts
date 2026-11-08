@@ -81,6 +81,10 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
       const params = new URLSearchParams()
       for (const status of query.statuses) params.append('status', status)
       for (const targetType of query.targetTypes) params.append('targetType', targetType)
+      if (query.exactTarget) {
+        params.set('exactTargetType', query.exactTarget.targetType)
+        params.set('exactTargetId', query.exactTarget.targetId)
+      }
       if (query.cursor) params.set('cursor', query.cursor)
       const suffix = params.size > 0 ? `?${params.toString()}` : ''
       return get(`/admin/reports${suffix}`)
