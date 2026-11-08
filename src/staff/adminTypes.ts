@@ -66,6 +66,16 @@ export type StaffReportDetail = {
   reportedUser: StaffReportSummary['reportedUser']
   targetCounts: TargetReportCounts | null
   target: Record<string, unknown>
+  contentModeration: {
+    kind: 'post' | 'comment'
+    targetId: string
+    postId: string
+    hidden: boolean
+    hiddenAt: string | null
+    version: number
+    deleted: boolean
+    history: Array<{ id: string; action: string; actorLabel: string | null; reason: string | null; createdAt: string }>
+  } | null
   history: Array<{ id: string; action: string; actorLabel: string | null; note: string | null; createdAt: string }>
 }
 
@@ -143,6 +153,11 @@ export type AdminRecords = {
     id: string,
     input: { status: 'open' | 'resolved' | 'dismissed'; expectedStatus: 'open' | 'resolved' | 'dismissed'; note: string },
   ): Promise<AdminResult<{ id: string; status: string }>>
+  setContentVisibility(
+    kind: 'post' | 'comment',
+    id: string,
+    input: { hidden: boolean; expectedVersion: number; reason: string },
+  ): Promise<AdminResult<{ outcome: 'changed' | 'unchanged'; hidden: boolean; hiddenAt: string | null; version: number }>>
 }
 
 export type AdminRoute =

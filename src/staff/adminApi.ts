@@ -105,6 +105,22 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
         return { ok: false, kind: 'uncertain' }
       }
     },
+    async setContentVisibility(kind, id, input) {
+      const path = kind === 'post'
+        ? `/admin/posts/${encodeURIComponent(id)}/moderation`
+        : `/admin/post-comments/${encodeURIComponent(id)}/moderation`
+      try {
+        const response = await send(path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+        })
+        return classify(response)
+      } catch (error) {
+        if (error instanceof MissingToken) return { ok: false, kind: 'expired' }
+        return { ok: false, kind: 'uncertain' }
+      }
+    },
   }
 }
 

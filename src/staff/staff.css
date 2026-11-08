@@ -388,6 +388,21 @@ button.report-chip {
   cursor: pointer;
 }
 
+.content-confirm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin: 8px 0 12px;
+}
+.content-confirm input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  flex: 0 0 18px;
+  margin: 0;
+  accent-color: #e60076;
+}
 .report-menu-options input[type='checkbox'] {
   width: 18px;
   height: 18px;

@@ -77,6 +77,9 @@ function records(partial: Partial<AdminRecords> = {}): AdminRecords {
     async setReportStatus() {
       return { ok: true as const, data: { id: 'report', status: 'resolved' } }
     },
+    async setContentVisibility() {
+      return { ok: false as const, kind: 'unavailable' as const }
+    },
     ...partial,
   }
 }

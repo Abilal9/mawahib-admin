@@ -347,6 +347,9 @@ function previewRecords(mode: string): AdminRecords {
     async setReportStatus() {
       return { ok: false, kind: 'unavailable' }
     },
+    async setContentVisibility() {
+      return { ok: false, kind: 'unavailable' }
+    },
   }
 }
 

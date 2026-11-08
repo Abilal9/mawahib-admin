@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import type { AdminRecords, ReportStatusFilter, ReportTargetFilter, StaffReportDetail, StaffReportSummary } from './adminTypes'
+import { moderationNotice, shouldRefreshModeration } from './contentModeration'
 import { ButtonSpinner, LoadingIndicator } from './LoadingIndicator'
 
 const STATUSES: Array<{ id: ReportStatusFilter; label: string }> = [
@@ -293,6 +294,7 @@ export function ReportDetail({
         <PersonLine label="Reporter" person={report.reporter} onOpen={onOpenAccount} />
         <PersonLine label="Reported account" person={report.reportedUser} onOpen={onOpenAccount} />
       </section>
+      <ContentVisibility report={report} records={records} onChanged={onChanged} />
       <section className="report-panel">
         <h2>Report actions</h2>
         <form onSubmit={(event) => event.preventDefault()}>
@@ -324,6 +326,76 @@ export function ReportDetail({
         )}
       </section>
     </article>
+  )
+}
+
+function ContentVisibility({
+  report,
+  records,
+  onChanged,
+}: {
+  report: StaffReportDetail
+  records: AdminRecords
+  onChanged: () => void
+}) {
+  const moderation = report.contentModeration
+  const [reason, setReason] = useState('')
+  const [confirmed, setConfirmed] = useState(false)
+  const [pending, setPending] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  if (!moderation || (report.targetType !== 'post' && report.targetType !== 'post_comment')) return null
+  const current = moderation
+  const nextHidden = !current.hidden
+  const label = current.hidden ? 'Restore content' : 'Hide content'
+  async function submit() {
+    const text = reason.trim()
+    if (pending || !confirmed || text.length < 1 || text.length > 500) return
+    setPending(true)
+    setNotice(null)
+    const result = await records.setContentVisibility(current.kind, current.targetId, {
+      hidden: nextHidden,
+      expectedVersion: current.version,
+      reason: text,
+    })
+    setPending(false)
+    setNotice(moderationNotice(result))
+    if (result.ok && result.data.outcome === 'changed') {
+      setReason('')
+      setConfirmed(false)
+    }
+    if (shouldRefreshModeration(result)) onChanged()
+  }
+  return (
+    <section className="report-panel">
+      <h2>Content visibility</h2>
+      <p>{current.hidden ? 'Hidden by Mawahib.' : 'Visible to people who can otherwise open it.'}</p>
+      <p className="quiet-note">Hiding or restoring content does not resolve, dismiss, or reopen this report. Existing links and older notifications are not erased.</p>
+      {current.deleted ? <p>The author has deleted this. Restoring visibility does not bring it back.</p> : null}
+      <form onSubmit={(event) => event.preventDefault()}>
+        <label htmlFor="content-reason">Reason for this visibility change</label>
+        <textarea id="content-reason" value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} />
+        <label className="content-confirm">
+          <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
+          <span>I confirm this visibility change and understand it does not change the report status.</span>
+        </label>
+        <button type="button" disabled={pending || !confirmed || reason.trim().length < 1 || (current.deleted && nextHidden)} aria-busy={pending} onClick={() => void submit()}>
+          {pending ? <ButtonSpinner /> : null}
+          {label}
+        </button>
+      </form>
+      {notice ? <p role="alert">{notice}</p> : null}
+      <h3>Content history</h3>
+      {current.history.length === 0 ? <p>No visibility changes yet.</p> : (
+        <ol className="report-history">
+          {current.history.map((event) => (
+            <li key={event.id}>
+              <p><strong>{labelAction(event.action)}</strong> · {event.actorLabel ?? 'Staff operator'} · {formatWhen(event.createdAt)}</p>
+              {event.reason ? <p className="report-text">{event.reason}</p> : null}
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
   )
 }
 
@@ -462,6 +534,8 @@ function labelAction(value: string): string {
   if (value === 'resolved' || value === 'report_resolved') return 'Resolve'
   if (value === 'dismissed' || value === 'report_dismissed') return 'Dismiss'
   if (value === 'open' || value === 'report_reopened') return 'Reopen'
+  if (value === 'post_hidden' || value === 'comment_hidden') return 'Hide content'
+  if (value === 'post_restored' || value === 'comment_restored') return 'Restore content'
   return value
 }
 
