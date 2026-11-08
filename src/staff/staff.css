@@ -509,6 +509,45 @@ button.report-chip {
   padding-left: 18px;
 }
 
+.report-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  max-width: 100%;
+}
+
+.demo-app button.report-open,
+.demo-app button.report-related {
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-weight: 700;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.demo-app button.report-open {
+  background: #e60076;
+  color: #ffffff;
+  border: 1px solid #e60076;
+}
+
+.demo-app button.report-related {
+  background: #ffffff;
+  color: #e60076;
+  border: 1px solid #e60076;
+}
+
+@media (max-width: 640px) {
+  .report-row-actions {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+}
+
 .report-filters {
   display: flex;
   flex-wrap: wrap;

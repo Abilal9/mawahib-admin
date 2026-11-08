@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import type { AdminRecords, ReportStatusFilter, ReportTargetFilter, StaffReportDetail, StaffReportSummary } from './adminTypes'
 import { moderationNotice, shouldRefreshModeration } from './contentModeration'
+import { showRelatedReports } from './relatedReports'
 import { ButtonSpinner, LoadingIndicator } from './LoadingIndicator'
 
 const STATUSES: Array<{ id: ReportStatusFilter; label: string }> = [
@@ -82,8 +83,10 @@ export function ReportsList({
               <TargetCounts counts={item.targetCounts} />
             </div>
             <div className="report-row-actions">
-              <button type="button" className="text-action" onClick={() => onRelated(item.targetType, item.targetId)}>View related reports</button>
-              <button type="button" className="text-action" onClick={() => onOpen(item.id)}>View report</button>
+              <button type="button" className="report-open" onClick={() => onOpen(item.id)}>View report</button>
+              {showRelatedReports(item.targetCounts) ? (
+                <button type="button" className="report-related" onClick={() => onRelated(item.targetType, item.targetId)}>View related reports</button>
+              ) : null}
             </div>
           </article>
         )) : null}
@@ -277,7 +280,11 @@ export function ReportDetail({
         <p>Submitted {formatWhen(report.createdAt)}</p>
         <p>Reference {report.id}</p>
         <TargetCounts counts={report.targetCounts} />
-        <button type="button" className="text-action" onClick={onRelated}>View related reports</button>
+        {showRelatedReports(report.targetCounts) ? (
+          <div className="report-row-actions">
+            <button type="button" className="report-related" onClick={onRelated}>View related reports</button>
+          </div>
+        ) : null}
       </header>
       <section className="report-panel">
         <h2>Reported content</h2>
