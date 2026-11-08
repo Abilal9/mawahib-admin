@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type R
 import { PasswordField } from './PasswordField'
 import { SignOutButton } from './SignOutButton'
 import { AdminShell } from './AdminShell'
+import { ButtonSpinner } from './LoadingIndicator'
 import type { AdminRecords, AdminRoute } from './adminTypes'
 import type { StaffAccessClient, StaffAuthClient } from './types'
 import { useStaffSession } from './useStaffSession'
@@ -115,8 +116,9 @@ function PortalBody({
         <p>Add this account to an authenticator app. Verification does not activate staff access. An administrator still has to activate this account.</p>
         {state.error ? <p role="alert">{state.error}</p> : null}
         <div className="actions">
-          <button type="button" onClick={() => void session.beginEnrollment()} disabled={state.busy}>
-            {state.busy ? 'Setting up' : 'Set up authenticator'}
+          <button type="button" onClick={() => void session.beginEnrollment()} disabled={state.busy} aria-busy={state.busy}>
+            {state.busy ? <ButtonSpinner /> : null}
+            Set up authenticator
           </button>
           <SignOutButton className="secondary" onSignOut={() => session.signOut()} />
         </div>
@@ -133,8 +135,9 @@ function PortalBody({
         <p>The previous setup was not finished. Start again to get a new code. This does not activate staff access.</p>
         {state.error ? <p role="alert">{state.error}</p> : null}
         <div className="actions">
-          <button type="button" onClick={() => void session.restartEnrollment()} disabled={state.busy}>
-            {state.busy ? 'Setting up' : 'Set up authenticator again'}
+          <button type="button" onClick={() => void session.restartEnrollment()} disabled={state.busy} aria-busy={state.busy}>
+            {state.busy ? <ButtonSpinner /> : null}
+            Set up authenticator again
           </button>
           <SignOutButton className="secondary" onSignOut={() => session.signOut()} />
         </div>
@@ -343,8 +346,9 @@ function SignIn({
         />
         {state.error ? <p role="alert">{state.error}</p> : null}
         <div className="actions">
-          <button type="submit" disabled={state.busy}>
-            {state.busy ? 'Signing in' : 'Sign in'}
+          <button type="submit" disabled={state.busy} aria-busy={state.busy}>
+            {state.busy ? <ButtonSpinner /> : null}
+            Sign in
           </button>
           {import.meta.env.DEV && onEnterDemo ? (
             <button type="button" className="secondary" onClick={onEnterDemo}>
@@ -423,8 +427,9 @@ function CodeForm({
         />
         {error ? <p role="alert">{error}</p> : null}
         <div className="actions">
-          <button type="submit" disabled={busy || code.length !== 6}>
-            {busy ? 'Checking code' : submitLabel}
+          <button type="submit" disabled={busy || code.length !== 6} aria-busy={busy}>
+            {busy ? <ButtonSpinner /> : null}
+            {submitLabel}
           </button>
           {onRetry ? (
             <button type="button" className="secondary" onClick={onRetry}>

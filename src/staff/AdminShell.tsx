@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import type { AccountActionRecord, AdminRecords, AdminResult, AdminRoute, OperationsOverview, ReportListQuery, ReportTotals, StaffDispute, StaffReportDetail, StaffReportSummary, StaffUserDetail, StaffUserSummary } from './adminTypes'
 import { OPERATIONS_POLL_MS, OperationsView } from './OperationsView'
 import { ReportDetail, ReportsList } from './ReportsView'
+import { ButtonSpinner, LoadingIndicator } from './LoadingIndicator'
 import { PortalFrame, type PortalSection } from '../portal/PortalFrame'
 
 type PlaceholderSection = 'marketplace' | 'payments' | 'staff'
@@ -125,6 +126,7 @@ export function AdminShell({
         }}
         show={route.name === 'users'}
       />
+      {view.name === 'loading' ? <LoadingIndicator label="Loading records" /> : null}
       {view.name === 'overview' ? <Overview overview={view.overview} userTotal={view.userTotal} reportTotals={view.reportTotals} onOpen={open} onRefresh={() => setReload((value) => value + 1)} /> : null}
       {view.name === 'denied' ? <p role="alert">Staff access is not active for this account. Contact your administrator.</p> : null}
       {view.name === 'expired' ? <p role="alert">Your session has expired. Sign in again.</p> : null}
@@ -217,7 +219,6 @@ function sectionFor(route: AdminRoute): PortalSection {
 }
 
 function titleFor(route: AdminRoute, view: View): string {
-  if (view.name === 'loading') return 'Loading records'
   if (view.name === 'denied') return 'Staff access unavailable'
   if (view.name === 'expired') return 'Session expired'
   if (view.name === 'unavailable') return 'Staff service unavailable'
@@ -226,7 +227,8 @@ function titleFor(route: AdminRoute, view: View): string {
   if (view.name === 'dispute') return view.dispute.title
   if (route.name === 'home') return 'Overview'
   if (route.name === 'users') return 'Users'
-  if (route.name === 'disputes') return 'Disputes'
+  if (route.name === 'user') return 'Account'
+  if (route.name === 'disputes' || route.name === 'dispute') return 'Disputes'
   if (route.name === 'operations') return 'Monitoring'
   if (route.name === 'marketplace') return 'Marketplace'
   if (route.name === 'reports') return 'Reports'
@@ -486,8 +488,9 @@ function UserDetail({
             <textarea id={reasonId} name="reason" required maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} />
             {message ? <p role="alert">{message}</p> : null}
             <div className="actions">
-              <button type="submit" disabled={busy || reason.trim().length === 0}>
-                {busy ? 'Saving' : `Confirm ${actionLabel.toLowerCase()}`}
+              <button type="submit" disabled={busy || reason.trim().length === 0} aria-busy={busy}>
+                {busy ? <ButtonSpinner /> : null}
+                {`Confirm ${actionLabel.toLowerCase()}`}
               </button>
               <button type="button" className="secondary" onClick={() => setConfirming(false)} disabled={busy}>
                 Cancel

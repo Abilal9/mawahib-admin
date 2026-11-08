@@ -224,7 +224,8 @@ describe('AdminShell', () => {
         onSignOut={() => undefined}
       />,
     )
-    expect(await screen.findByRole('heading', { name: 'Loading records' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Users' })).toBeTruthy()
+    expect(screen.getByRole('status', { name: 'Loading records' })).toBeTruthy()
     fireEvent.change(screen.getByLabelText('Name, username, email, or account id'), { target: { value: 'current' } })
     fireEvent.click(screen.getByRole('button', { name: 'Search' }))
     expect(await screen.findByText('Current Result')).toBeTruthy()
@@ -256,7 +257,8 @@ describe('AdminShell', () => {
       )
     }
     render(<Session />)
-    expect(await screen.findByRole('heading', { name: 'Loading records' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Disputes' })).toBeTruthy()
+    expect(screen.getByRole('status', { name: 'Loading records' })).toBeTruthy()
     await act(async () => {
       resolveLate({ ok: false, kind: 'denied' })
     })
@@ -428,7 +430,8 @@ describe('AdminShell', () => {
       )
     }
     render(<Session />)
-    expect(await screen.findByRole('heading', { name: 'Loading records' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Users' })).toBeTruthy()
+    expect(screen.getByRole('status', { name: 'Loading records' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Sign out?' })).getByRole('button', { name: 'Sign out' }))
     expect(screen.getByText('Signed out')).toBeTruthy()
@@ -499,7 +502,8 @@ describe('AdminShell', () => {
       )
     }
     render(<Session />)
-    expect(await screen.findByRole('heading', { name: 'Loading records' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Monitoring' })).toBeTruthy()
+    expect(screen.getByRole('status', { name: 'Loading records' })).toBeTruthy()
     await act(async () => {
       resolveLate({ ok: false, kind: 'denied' })
     })
@@ -522,7 +526,8 @@ describe('AdminShell', () => {
         onSignOut={() => undefined}
       />,
     )
-    expect(await screen.findByRole('heading', { name: 'Loading records' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Monitoring' })).toBeTruthy()
+    expect(screen.getByRole('status', { name: 'Loading records' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Users' }))
     expect(await screen.findByText('Ada Preview')).toBeTruthy()
     await act(async () => {
@@ -656,8 +661,12 @@ describe('AdminShell', () => {
       },
     })} onSignOut={() => undefined} />)
     fireEvent.click(await screen.findByRole('button', { name: 'Reports' }))
-    expect(await screen.findByRole('button', { name: 'Statuses' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Statuses' }))
+    expect(await screen.findByRole('button', { name: 'Open' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+    expect(screen.getByRole('checkbox', { name: 'Resolved' })).toBeTruthy()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('checkbox', { name: 'Resolved' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'Resolved' }))
     expect(await screen.findByText('Matching reports: 2')).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'Reports' })).toBeTruthy()

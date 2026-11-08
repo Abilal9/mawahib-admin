@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import type { AdminRecords, ReportStatusFilter, ReportTargetFilter, StaffReportDetail, StaffReportSummary } from './adminTypes'
+import { ButtonSpinner, LoadingIndicator } from './LoadingIndicator'
 
 const STATUSES: Array<{ id: ReportStatusFilter; label: string }> = [
   { id: 'open', label: 'Open' },
@@ -47,9 +48,11 @@ export function ReportsList({
   return (
     <div className="demo-list">
       <ReportFilters statuses={statuses} targetTypes={targetTypes} onFilter={onFilter} />
-      <p>{matchCount === null ? (phase === 'loading' ? 'Counting matching reports…' : 'Matching reports unavailable') : `Matching reports: ${matchCount}`}</p>
+      <p>
+        {phase === 'loading' ? <span className="metric-skeleton" aria-hidden="true" /> : matchCount === null ? 'Matching reports unavailable' : `Matching reports: ${matchCount}`}
+      </p>
       <div className="report-results" aria-busy={phase === 'loading'}>
-        {phase === 'loading' ? <p role="status">Loading reports…</p> : null}
+        {phase === 'loading' ? <LoadingIndicator compact label="Loading reports" /> : null}
         {phase === 'unavailable' ? <p role="alert">The report queue is temporarily unavailable. The filters are unchanged.</p> : null}
         {phase === 'denied' ? <p role="alert">Staff access is not active for this account.</p> : null}
         {phase === 'expired' ? <p role="alert">Your session has expired. Sign in again.</p> : null}
@@ -91,7 +94,8 @@ function ReportFilters({
   return (
     <div className="report-filter-bar">
       <FilterMenu
-        label={statuses.length === 0 ? 'All statuses' : 'Statuses'}
+        label="Statuses"
+        summary={selectionSummary(statuses, STATUSES, 'All statuses', 'statuses')}
         open={openMenu === 'status'}
         onToggle={() => setOpenMenu(openMenu === 'status' ? null : 'status')}
         onDone={() => setOpenMenu(null)}
@@ -104,7 +108,8 @@ function ReportFilters({
         ))}
       </FilterMenu>
       <FilterMenu
-        label={targetTypes.length === 0 ? 'All targets' : 'Targets'}
+        label="Targets"
+        summary={selectionSummary(targetTypes, TARGETS, 'All targets', 'targets')}
         open={openMenu === 'target'}
         onToggle={() => setOpenMenu(openMenu === 'target' ? null : 'target')}
         onDone={() => setOpenMenu(null)}
@@ -116,16 +121,16 @@ function ReportFilters({
           </label>
         ))}
       </FilterMenu>
-      <button type="button" onClick={() => onFilter([], [])}>Clear filters</button>
+      <button type="button" className="report-clear" onClick={() => onFilter([], [])}>Clear filters</button>
       <div className="report-chips">
         {statuses.map((status) => (
-          <button key={status} type="button" onClick={() => toggleStatus(status)}>
-            {labelStatus(status)} <span className="sr-only">Remove status filter</span>
+          <button key={status} type="button" className="report-chip" onClick={() => toggleStatus(status)}>
+            {labelStatus(status)} <span aria-hidden="true">×</span><span className="sr-only">Remove status filter</span>
           </button>
         ))}
         {targetTypes.map((target) => (
-          <button key={target} type="button" onClick={() => toggleTarget(target)}>
-            {labelTarget(target)} <span className="sr-only">Remove target filter</span>
+          <button key={target} type="button" className="report-chip" onClick={() => toggleTarget(target)}>
+            {labelTarget(target)} <span aria-hidden="true">×</span><span className="sr-only">Remove target filter</span>
           </button>
         ))}
       </div>
@@ -135,28 +140,68 @@ function ReportFilters({
 
 function FilterMenu({
   label,
+  summary,
   open,
   onToggle,
   onDone,
   children,
 }: {
   label: string
+  summary: string
   open: boolean
   onToggle: () => void
   onDone: () => void
   children: ReactNode
 }) {
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelId = useId()
+  useEffect(() => {
+    if (!open) return
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      onDone()
+      triggerRef.current?.focus()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, onDone])
   return (
     <div className="report-menu">
-      <button type="button" aria-expanded={open} onClick={onToggle}>{label}</button>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="report-filter-trigger"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={onToggle}
+      >
+        <span>{summary}</span>
+        <span className="report-chevron" aria-hidden="true" />
+      </button>
       {open ? (
-        <div className="report-menu-panel" role="group" aria-label={label}>
-          {children}
-          <button type="button" onClick={onDone}>Done</button>
+        <div className="report-menu-panel" id={panelId}>
+          <div className="report-menu-options" role="group" aria-label={label}>
+            {children}
+          </div>
+          <div className="report-menu-footer">
+            <button type="button" className="secondary" onClick={() => { onDone(); triggerRef.current?.focus() }}>Done</button>
+          </div>
         </div>
       ) : null}
     </div>
   )
+}
+
+function selectionSummary<T extends string>(
+  selected: T[],
+  options: Array<{ id: T; label: string }>,
+  allLabel: string,
+  plural: string,
+): string {
+  if (selected.length === 0) return allLabel
+  if (selected.length === 1) return options.find((item) => item.id === selected[0])?.label ?? allLabel
+  return `${selected.length} ${plural}`
 }
 
 export function ReportDetail({
@@ -171,16 +216,16 @@ export function ReportDetail({
   onOpenAccount: (id: string) => void
 }) {
   const [note, setNote] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [pending, setPending] = useState<StaffReportDetail['status'] | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const actions = nextActions(report.status)
   async function submit(status: StaffReportDetail['status']) {
     const text = note.trim()
-    if (busy || text.length < 1 || text.length > 500) return
-    setBusy(true)
+    if (pending || text.length < 1 || text.length > 500) return
+    setPending(status)
     setNotice(null)
     const result = await records.setReportStatus(report.id, { status, expectedStatus: report.status, note: text })
-    setBusy(false)
+    setPending(null)
     if (!result.ok) {
       setNotice(result.kind === 'conflict'
         ? 'This report changed. Refresh it before trying again.'
@@ -221,7 +266,8 @@ export function ReportDetail({
           <textarea id="report-note" value={note} maxLength={500} onChange={(event) => setNote(event.target.value)} />
           <div className="report-filters">
             {actions.map((action) => (
-              <button key={action} type="button" disabled={busy || note.trim().length < 1} onClick={() => void submit(action)}>
+              <button key={action} type="button" disabled={pending !== null || note.trim().length < 1} aria-busy={pending === action} onClick={() => void submit(action)}>
+                {pending === action ? <ButtonSpinner /> : null}
                 {labelAction(action)}
               </button>
             ))}

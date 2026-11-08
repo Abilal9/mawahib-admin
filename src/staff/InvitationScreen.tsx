@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type RefObject } from 'react'
+import { ButtonSpinner } from './LoadingIndicator'
 import { PasswordField } from './PasswordField'
 import { SignOutButton } from './SignOutButton'
 
@@ -180,7 +181,7 @@ function PasswordForm({
         {mismatchVisible ? <p id={confirmMessageId} role="alert">Passwords do not match.</p> : null}
         {error ? <p role="alert">{error}</p> : null}
         <div className="actions">
-          <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save password'}</button>
+          <button type="submit" disabled={busy} aria-busy={busy}>{busy ? <ButtonSpinner /> : null}Save password</button>
         </div>
       </form>
     </>
