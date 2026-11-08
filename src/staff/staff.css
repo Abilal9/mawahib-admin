@@ -293,6 +293,79 @@ button:focus-visible {
   }
 }
 
+.report-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.report-menu {
+  position: relative;
+}
+
+.report-menu-panel {
+  position: absolute;
+  z-index: 2;
+  min-width: 220px;
+  max-height: 280px;
+  overflow: auto;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #d9e2ec;
+  border-radius: 10px;
+}
+
+.report-menu-panel label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+}
+
+.report-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.report-detail,
+.report-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.report-panel {
+  padding: 12px 0;
+  border-top: 1px solid #d9e2ec;
+}
+
+.report-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.report-complaint {
+  background: #f7f9fb;
+  padding: 12px;
+  border-radius: 10px;
+}
+
+.report-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fde7f2;
+}
+
+.report-history {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding-left: 18px;
+}
+
 .report-filters {
   display: flex;
   flex-wrap: wrap;

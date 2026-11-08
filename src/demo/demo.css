@@ -634,6 +634,23 @@
   }
 }
 
+.report-filter-bar,
+.report-chips,
+.report-detail,
+.report-panel,
+.report-history {
+  max-width: 100%;
+}
+
+.report-menu-panel {
+  max-width: min(280px, calc(100vw - 32px));
+}
+
+.report-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .report-filters {
   display: flex;
   flex-wrap: wrap;

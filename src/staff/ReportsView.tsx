@@ -1,15 +1,13 @@
-import { useState } from 'react'
-import type { AdminRecords, ReportListQuery, StaffReportDetail, StaffReportSummary } from './adminTypes'
+import { useState, type ReactNode } from 'react'
+import type { AdminRecords, ReportStatusFilter, ReportTargetFilter, StaffReportDetail, StaffReportSummary } from './adminTypes'
 
-const STATUSES: Array<{ id: ReportListQuery['status']; label: string }> = [
+const STATUSES: Array<{ id: ReportStatusFilter; label: string }> = [
   { id: 'open', label: 'Open' },
   { id: 'resolved', label: 'Resolved' },
   { id: 'dismissed', label: 'Dismissed' },
-  { id: 'all', label: 'All' },
 ]
 
-const TARGETS: Array<{ id: ReportListQuery['targetType']; label: string }> = [
-  { id: 'all', label: 'All' },
+const TARGETS: Array<{ id: ReportTargetFilter; label: string }> = [
   { id: 'post_comment', label: 'Comment' },
   { id: 'work_request', label: 'Work request' },
   { id: 'user', label: 'Account' },
@@ -19,51 +17,144 @@ const TARGETS: Array<{ id: ReportListQuery['targetType']; label: string }> = [
   { id: 'service_offering', label: 'Service' },
 ]
 
+const ACTION_HELP: Record<StaffReportDetail['status'], string> = {
+  resolved: 'Resolve marks this report handled. It does not hide content or change an account.',
+  dismissed: 'Dismiss closes this report without a content or account action.',
+  open: 'Reopen puts this report back in the open queue. It does not restore content.',
+}
+
 export function ReportsList({
   items,
-  status,
-  targetType,
+  statuses,
+  targetTypes,
   nextCursor,
+  matchCount,
+  phase,
   onFilter,
   onOpen,
   onMore,
 }: {
   items: StaffReportSummary[]
-  status: ReportListQuery['status']
-  targetType: ReportListQuery['targetType']
+  statuses: ReportStatusFilter[]
+  targetTypes: ReportTargetFilter[]
   nextCursor: string | null
-  onFilter: (status: ReportListQuery['status'], targetType: ReportListQuery['targetType']) => void
+  matchCount: number | null
+  phase: 'loading' | 'ready' | 'unavailable' | 'denied' | 'expired'
+  onFilter: (statuses: ReportStatusFilter[], targetTypes: ReportTargetFilter[]) => void
   onOpen: (id: string) => void
   onMore: () => void
 }) {
   return (
     <div className="demo-list">
-      <div className="report-filters" role="group" aria-label="Report status">
+      <ReportFilters statuses={statuses} targetTypes={targetTypes} onFilter={onFilter} />
+      <p>{matchCount === null ? (phase === 'loading' ? 'Counting matching reports…' : 'Matching reports unavailable') : `Matching reports: ${matchCount}`}</p>
+      <div className="report-results" aria-busy={phase === 'loading'}>
+        {phase === 'loading' ? <p role="status">Loading reports…</p> : null}
+        {phase === 'unavailable' ? <p role="alert">The report queue is temporarily unavailable. The filters are unchanged.</p> : null}
+        {phase === 'denied' ? <p role="alert">Staff access is not active for this account.</p> : null}
+        {phase === 'expired' ? <p role="alert">Your session has expired. Sign in again.</p> : null}
+        {phase === 'ready' && items.length === 0 ? <p>No reports match these filters.</p> : null}
+        {phase === 'ready' ? items.map((item) => (
+          <article key={item.id} className="demo-row">
+            <div>
+              <p><strong>{labelTarget(item.targetType)}</strong> · {labelReason(item.reason)}</p>
+              <p>{labelStatus(item.status)} · {formatWhen(item.createdAt)}</p>
+              <p>Reported account: {item.reportedUser ? item.reportedUser.displayName : 'Unavailable'}</p>
+            </div>
+            <button type="button" className="text-action" onClick={() => onOpen(item.id)}>View report</button>
+          </article>
+        )) : null}
+        {phase === 'ready' && nextCursor ? <button type="button" onClick={onMore}>Next</button> : null}
+      </div>
+    </div>
+  )
+}
+
+function ReportFilters({
+  statuses,
+  targetTypes,
+  onFilter,
+}: {
+  statuses: ReportStatusFilter[]
+  targetTypes: ReportTargetFilter[]
+  onFilter: (statuses: ReportStatusFilter[], targetTypes: ReportTargetFilter[]) => void
+}) {
+  const [openMenu, setOpenMenu] = useState<'status' | 'target' | null>(null)
+  const toggleStatus = (id: ReportStatusFilter) => {
+    const next = statuses.includes(id) ? statuses.filter((item) => item !== id) : [...statuses, id]
+    onFilter(next, targetTypes)
+  }
+  const toggleTarget = (id: ReportTargetFilter) => {
+    const next = targetTypes.includes(id) ? targetTypes.filter((item) => item !== id) : [...targetTypes, id]
+    onFilter(statuses, next)
+  }
+  return (
+    <div className="report-filter-bar">
+      <FilterMenu
+        label={statuses.length === 0 ? 'All statuses' : 'Statuses'}
+        open={openMenu === 'status'}
+        onToggle={() => setOpenMenu(openMenu === 'status' ? null : 'status')}
+        onDone={() => setOpenMenu(null)}
+      >
         {STATUSES.map((item) => (
-          <button key={item.id} type="button" aria-pressed={status === item.id} onClick={() => onFilter(item.id, targetType)}>
+          <label key={item.id}>
+            <input type="checkbox" checked={statuses.includes(item.id)} onChange={() => toggleStatus(item.id)} />
             {item.label}
-          </button>
+          </label>
         ))}
-      </div>
-      <div className="report-filters" role="group" aria-label="Report target">
+      </FilterMenu>
+      <FilterMenu
+        label={targetTypes.length === 0 ? 'All targets' : 'Targets'}
+        open={openMenu === 'target'}
+        onToggle={() => setOpenMenu(openMenu === 'target' ? null : 'target')}
+        onDone={() => setOpenMenu(null)}
+      >
         {TARGETS.map((item) => (
-          <button key={item.id} type="button" aria-pressed={targetType === item.id} onClick={() => onFilter(status, item.id)}>
+          <label key={item.id}>
+            <input type="checkbox" checked={targetTypes.includes(item.id)} onChange={() => toggleTarget(item.id)} />
             {item.label}
+          </label>
+        ))}
+      </FilterMenu>
+      <button type="button" onClick={() => onFilter([], [])}>Clear filters</button>
+      <div className="report-chips">
+        {statuses.map((status) => (
+          <button key={status} type="button" onClick={() => toggleStatus(status)}>
+            {labelStatus(status)} <span className="sr-only">Remove status filter</span>
+          </button>
+        ))}
+        {targetTypes.map((target) => (
+          <button key={target} type="button" onClick={() => toggleTarget(target)}>
+            {labelTarget(target)} <span className="sr-only">Remove target filter</span>
           </button>
         ))}
       </div>
-      {items.length === 0 ? <p>No reports match these filters.</p> : null}
-      {items.map((item) => (
-        <article key={item.id} className="demo-row">
-          <div>
-            <p><strong>{labelTarget(item.targetType)}</strong> · {labelReason(item.reason)}</p>
-            <p>{item.status} · {formatWhen(item.createdAt)}</p>
-            <p>Reported account: {item.reportedUser ? item.reportedUser.displayName : 'Unavailable'}</p>
-          </div>
-          <button type="button" className="text-action" onClick={() => onOpen(item.id)}>View report</button>
-        </article>
-      ))}
-      {nextCursor ? <button type="button" onClick={onMore}>Next</button> : null}
+    </div>
+  )
+}
+
+function FilterMenu({
+  label,
+  open,
+  onToggle,
+  onDone,
+  children,
+}: {
+  label: string
+  open: boolean
+  onToggle: () => void
+  onDone: () => void
+  children: ReactNode
+}) {
+  return (
+    <div className="report-menu">
+      <button type="button" aria-expanded={open} onClick={onToggle}>{label}</button>
+      {open ? (
+        <div className="report-menu-panel" role="group" aria-label={label}>
+          {children}
+          <button type="button" onClick={onDone}>Done</button>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -72,10 +163,12 @@ export function ReportDetail({
   report,
   records,
   onChanged,
+  onOpenAccount,
 }: {
   report: StaffReportDetail
   records: AdminRecords
   onChanged: () => void
+  onOpenAccount: (id: string) => void
 }) {
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -98,88 +191,159 @@ export function ReportDetail({
     onChanged()
   }
   return (
-    <section className="demo-panel">
-      <p>Status: {report.status}</p>
-      <p>Reason: {labelReason(report.reason)}</p>
-      <p>Submitted {formatWhen(report.createdAt)}</p>
-      <p>Details: {report.details ?? 'No details were added.'}</p>
-      <p>Reporter: {report.reporter ? `${report.reporter.displayName} · ${report.reporter.accountStatus}` : 'Reporter record unavailable'}</p>
-      <p>Reported account: {report.reportedUser ? `${report.reportedUser.displayName} · ${report.reportedUser.accountStatus}` : 'Unavailable'}</p>
-      <TargetContext target={report.target} />
-      <h2>History</h2>
-      {report.history.length === 0 ? <p>No status changes yet.</p> : report.history.map((event) => (
-        <p key={event.id}>{labelAction(event.action)} · {formatWhen(event.createdAt)}{event.note ? ` · ${event.note}` : ''}</p>
-      ))}
-      <form onSubmit={(event) => event.preventDefault()}>
-        <label htmlFor="report-note">Note</label>
-        <textarea id="report-note" value={note} maxLength={500} onChange={(event) => setNote(event.target.value)} />
-        <div className="report-filters">
-          {actions.map((action) => (
-            <button key={action} type="button" disabled={busy || note.trim().length < 1} onClick={() => void submit(action)}>
-              {labelAction(action)}
-            </button>
-          ))}
-        </div>
-      </form>
-      {notice ? <p role="alert">{notice}</p> : null}
-      <p className="quiet-note">Changing this report does not hide content or change an account.</p>
-    </section>
+    <article className="report-detail">
+      <header className="report-header">
+        <p className="metric-title">{labelTarget(report.targetType)}</p>
+        <h2>{reportTitle(report)}</h2>
+        <p><span className="report-badge">{labelStatus(report.status)}</span></p>
+        <p>Submitted {formatWhen(report.createdAt)}</p>
+        <p>Reference {report.id}</p>
+      </header>
+      <section className="report-panel">
+        <h2>Reported content</h2>
+        <ContentPanel report={report} />
+      </section>
+      <section className="report-panel report-complaint">
+        <h2>Complaint</h2>
+        <p>Reason: {labelReason(report.reason)}</p>
+        <h3>Reporter’s explanation</h3>
+        <p className="report-text">{report.details ?? 'No explanation was added.'}</p>
+      </section>
+      <section className="report-panel">
+        <h2>People</h2>
+        <PersonLine label="Reporter" person={report.reporter} onOpen={onOpenAccount} />
+        <PersonLine label="Reported account" person={report.reportedUser} onOpen={onOpenAccount} />
+      </section>
+      <section className="report-panel">
+        <h2>Report actions</h2>
+        <form onSubmit={(event) => event.preventDefault()}>
+          <label htmlFor="report-note">Moderation note</label>
+          <textarea id="report-note" value={note} maxLength={500} onChange={(event) => setNote(event.target.value)} />
+          <div className="report-filters">
+            {actions.map((action) => (
+              <button key={action} type="button" disabled={busy || note.trim().length < 1} onClick={() => void submit(action)}>
+                {labelAction(action)}
+              </button>
+            ))}
+          </div>
+        </form>
+        {actions.map((action) => <p key={action} className="quiet-note">{ACTION_HELP[action]}</p>)}
+        {notice ? <p role="alert">{notice}</p> : null}
+      </section>
+      <section className="report-panel">
+        <h2>History</h2>
+        {report.history.length === 0 ? <p>No status changes yet.</p> : (
+          <ol className="report-history">
+            {report.history.map((event) => (
+              <li key={event.id}>
+                <p><strong>{labelAction(event.action)}</strong> · {event.actorLabel ?? 'Staff operator'} · {formatWhen(event.createdAt)}</p>
+                {event.note ? <p className="report-text">{event.note}</p> : null}
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+    </article>
   )
 }
 
-function TargetContext({ target }: { target: StaffReportDetail['target'] }) {
+function ContentPanel({ report }: { report: StaffReportDetail }) {
+  const target = report.target
   const state = typeof target.state === 'string' ? target.state : 'missing'
-  if (state === 'missing') return <p>The reported item is no longer in the database.</p>
-  const comment = target.comment
-  if (comment && typeof comment === 'object') {
-    const text = 'text' in comment && typeof comment.text === 'string' ? comment.text : ''
+  if (state === 'missing') return <p>The reported item is no longer in the database. This report is kept.</p>
+  const comment = objectField(target, 'comment')
+  if (comment) {
     return (
       <>
-        <p>Comment: {state === 'deleted' ? 'Deleted' : 'Available'}</p>
-        <p>{text}</p>
+        <p>Current comment: {state === 'deleted' ? 'Deleted. The text below is not current content.' : 'Available'}</p>
+        <p className="report-text">{textField(comment, 'text') || 'No comment text is available.'}</p>
+        <ParentPost post={objectField(target, 'post')} />
       </>
     )
   }
-  const request = target.workRequest
-  if (request && typeof request === 'object') {
-    const title = textField(request, 'title') || 'Untitled'
-    const status = textField(request, 'status') || state
-    return <p>Work request: {title} · {status}{state === 'deleted' ? ' · Deleted' : ''}</p>
-  }
-  const post = target.post
-  if (post && typeof post === 'object') {
-    const excerpt = textField(post, 'excerpt')
+  const post = objectField(target, 'post')
+  if (post && !comment) {
     return (
       <>
-        <p>Post: {state === 'deleted' ? 'Deleted. This is not the current post.' : 'Available'}</p>
-        {excerpt ? <p>{excerpt}</p> : <p>No current text is available.</p>}
+        <p>{state === 'deleted' ? 'This post is deleted. No current text is shown.' : 'Current post text'}</p>
+        {textField(post, 'excerpt') ? <p className="report-text">{textField(post, 'excerpt')}</p> : <p>No current text is available.</p>}
+        <p>Visibility: {textField(post, 'visibility') || 'Unknown'}</p>
       </>
     )
   }
-  const account = target.user
-  if (account && typeof account === 'object') {
-    return <p>Account: {textField(account, 'displayName') || 'Unavailable'} · {state === 'deleted' ? 'Deleted' : textField(account, 'accountStatus') || state}</p>
+  const request = objectField(target, 'workRequest')
+  if (request) {
+    return <p>Work request: {textField(request, 'title') || 'Untitled'} · {state === 'deleted' ? 'Deleted' : textField(request, 'status')}</p>
   }
-  const review = target.review
-  if (review && typeof review === 'object') {
-    const body = textField(review, 'body')
-    const title = target.engagement && typeof target.engagement === 'object' ? textField(target.engagement, 'title') : ''
+  const account = objectField(target, 'user')
+  if (account) {
+    return <p>Account: {textField(account, 'displayName') || 'Unavailable'} · {state === 'deleted' ? 'Deleted' : textField(account, 'accountStatus')}</p>
+  }
+  const review = objectField(target, 'review')
+  if (review) {
+    const engagement = objectField(target, 'engagement')
     return (
       <>
-        <p>Review: {state === 'deleted' ? 'Deleted. This is not the current review.' : 'Available'}{title ? ` · ${title}` : ''}</p>
-        {body ? <p>{body}</p> : <p>No current review text is available.</p>}
+        <p>{state === 'deleted' ? 'The engagement is deleted. Review text is not shown as current.' : 'Current review'}</p>
+        {state === 'deleted' ? null : <p className="report-text">{textField(review, 'body') || 'No review text.'}</p>}
+        <p>{engagement ? `Engagement: ${textField(engagement, 'title') || 'Untitled'}` : 'Engagement unavailable'}</p>
       </>
     )
   }
-  const job = target.job
-  if (job && typeof job === 'object') {
-    return <p>Job: {textField(job, 'title') || 'Untitled'}{state === 'deleted' ? ' · Deleted' : ` · ${textField(job, 'status')}`}</p>
-  }
-  const service = target.service
-  if (service && typeof service === 'object') {
-    return <p>Service: {textField(service, 'title') || 'Untitled'}{state === 'deleted' ? ' · Deleted' : ` · ${textField(service, 'status')}`}</p>
-  }
+  const job = objectField(target, 'job')
+  if (job) return <p>Job: {textField(job, 'title') || 'Untitled'} · {state === 'deleted' ? 'Deleted' : textField(job, 'status')}</p>
+  const service = objectField(target, 'service')
+  if (service) return <p>Service: {textField(service, 'title') || 'Untitled'} · {state === 'deleted' ? 'Deleted' : textField(service, 'status')}</p>
   return <p>Target state: {state}</p>
+}
+
+function ParentPost({ post }: { post: object | null }) {
+  if (!post) return <p>The parent post is not available.</p>
+  const excerpt = textField(post, 'excerpt')
+  return (
+    <p>
+      Parent post: {'deleted' in post && post.deleted === true ? 'Deleted' : 'Available'}
+      {excerpt ? ` · ${excerpt}` : ''}
+    </p>
+  )
+}
+
+function PersonLine({
+  label,
+  person,
+  onOpen,
+}: {
+  label: string
+  person: StaffReportDetail['reporter']
+  onOpen: (id: string) => void
+}) {
+  if (!person) return <p>{label}: Unavailable</p>
+  return (
+    <p>
+      {label}: {person.displayName}{' '}
+      <span className="report-badge">{person.deleted ? 'Deleted' : person.accountStatus}</span>{' '}
+      <button type="button" className="text-action" onClick={() => onOpen(person.id)}>View account</button>
+    </p>
+  )
+}
+
+function reportTitle(report: StaffReportDetail): string {
+  const target = report.target
+  const named = ['workRequest', 'job', 'service', 'engagement', 'user', 'post']
+  for (const key of named) {
+    const value = objectField(target, key)
+    const title = value ? textField(value, 'title') || textField(value, 'displayName') || textField(value, 'excerpt') : ''
+    if (title) return title
+  }
+  const comment = objectField(target, 'comment')
+  const text = comment ? textField(comment, 'text') : ''
+  return text ? text.slice(0, 80) : labelTarget(report.targetType)
+}
+
+function objectField(value: object, key: string): object | null {
+  if (!(key in value)) return null
+  const field = (value as Record<string, unknown>)[key]
+  return field && typeof field === 'object' ? field : null
 }
 
 function textField(value: object, key: string): string {
@@ -195,6 +359,10 @@ function nextActions(status: StaffReportDetail['status']): Array<StaffReportDeta
 
 function labelTarget(value: string): string {
   return TARGETS.find((item) => item.id === value)?.label ?? value
+}
+
+function labelStatus(value: string): string {
+  return STATUSES.find((item) => item.id === value)?.label ?? value
 }
 
 function labelReason(value: string): string {

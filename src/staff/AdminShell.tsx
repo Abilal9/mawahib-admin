@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
-import type { AccountActionRecord, AdminRecords, AdminResult, AdminRoute, OperationsOverview, ReportListQuery, StaffDispute, StaffReportDetail, StaffReportSummary, StaffUserDetail, StaffUserSummary } from './adminTypes'
+import type { AccountActionRecord, AdminRecords, AdminResult, AdminRoute, OperationsOverview, ReportListQuery, ReportTotals, StaffDispute, StaffReportDetail, StaffReportSummary, StaffUserDetail, StaffUserSummary } from './adminTypes'
 import { OPERATIONS_POLL_MS, OperationsView } from './OperationsView'
 import { ReportDetail, ReportsList } from './ReportsView'
 import { PortalFrame, type PortalSection } from '../portal/PortalFrame'
@@ -8,14 +8,14 @@ type PlaceholderSection = 'marketplace' | 'payments' | 'staff'
 
 type View =
   | { name: 'loading' }
-  | { name: 'overview'; overview: OperationsOverview | null; userTotal: number | null }
+  | { name: 'overview'; overview: OperationsOverview | null; userTotal: number | null; reportTotals: ReportTotals | null }
   | { name: 'users'; query: string; items: StaffUserSummary[]; nextCursor: string | null; totalUsers: number; matchCount: number }
   | { name: 'user'; user: StaffUserDetail }
   | { name: 'disputes'; items: StaffDispute[]; nextCursor: string | null }
   | { name: 'dispute'; dispute: StaffDispute }
   | { name: 'operations'; overview: OperationsOverview }
-  | { name: 'reports'; status: ReportListQuery['status']; targetType: ReportListQuery['targetType']; items: StaffReportSummary[]; nextCursor: string | null }
-  | { name: 'report'; report: StaffReportDetail }
+  | { name: 'reports'; statuses: ReportListQuery['statuses']; targetTypes: ReportListQuery['targetTypes']; items: StaffReportSummary[]; nextCursor: string | null; matchCount: number | null; phase: 'loading' | 'ready' | 'unavailable' | 'denied' | 'expired' }
+  | { name: 'report'; report: StaffReportDetail; returnTo: ReportListQuery }
   | { name: 'placeholder'; section: PlaceholderSection }
   | { name: 'empty'; message: string }
   | { name: 'denied' }
@@ -47,13 +47,26 @@ export function AdminShell({
 
   useEffect(() => {
     const id = ++requestId.current
-    setView({ name: 'loading' })
+    if (route.name === 'reports') {
+      setView({
+        name: 'reports',
+        statuses: route.statuses,
+        targetTypes: route.targetTypes,
+        items: [],
+        nextCursor: null,
+        matchCount: null,
+        phase: 'loading',
+      })
+    } else {
+      setView({ name: 'loading' })
+    }
     void load(records, route).then((next) => {
       if (id !== requestId.current) return
       if (next.name === 'denied' && onAccessDenied) {
         onAccessDenied()
         return
       }
+      if (next.name === 'reports' && (next.phase === 'denied' || next.phase === 'expired') && onAccessDenied) onAccessDenied()
       setView(next)
     })
     return () => {
@@ -112,7 +125,7 @@ export function AdminShell({
         }}
         show={route.name === 'users'}
       />
-      {view.name === 'overview' ? <Overview overview={view.overview} userTotal={view.userTotal} onOpen={open} onRefresh={() => setReload((value) => value + 1)} /> : null}
+      {view.name === 'overview' ? <Overview overview={view.overview} userTotal={view.userTotal} reportTotals={view.reportTotals} onOpen={open} onRefresh={() => setReload((value) => value + 1)} /> : null}
       {view.name === 'denied' ? <p role="alert">Staff access is not active for this account. Contact your administrator.</p> : null}
       {view.name === 'expired' ? <p role="alert">Your session has expired. Sign in again.</p> : null}
       {view.name === 'unavailable' ? <p role="alert">The staff service is temporarily unavailable. Try again.</p> : null}
@@ -163,15 +176,24 @@ export function AdminShell({
       {view.name === 'reports' ? (
         <ReportsList
           items={view.items}
-          status={view.status}
-          targetType={view.targetType}
+          statuses={view.statuses}
+          targetTypes={view.targetTypes}
           nextCursor={view.nextCursor}
-          onFilter={(status, targetType) => open({ name: 'reports', status, targetType, cursor: null })}
-          onOpen={(id) => open({ name: 'report', id })}
-          onMore={() => open({ name: 'reports', status: view.status, targetType: view.targetType, cursor: view.nextCursor })}
+          matchCount={view.matchCount}
+          phase={view.phase}
+          onFilter={(statuses, targetTypes) => open({ name: 'reports', statuses, targetTypes, cursor: null })}
+          onOpen={(id) => open({ name: 'report', id, returnTo: { statuses: view.statuses, targetTypes: view.targetTypes, cursor: route.name === 'reports' ? route.cursor : null } })}
+          onMore={() => open({ name: 'reports', statuses: view.statuses, targetTypes: view.targetTypes, cursor: view.nextCursor })}
         />
       ) : null}
-      {view.name === 'report' ? <ReportDetail report={view.report} records={records} onChanged={() => setReload((value) => value + 1)} /> : null}
+      {view.name === 'report' ? (
+        <ReportDetail
+          report={view.report}
+          records={records}
+          onChanged={() => setReload((value) => value + 1)}
+          onOpenAccount={(id) => open({ name: 'user', id })}
+        />
+      ) : null}
     </PortalFrame>
   )
 }
@@ -181,7 +203,7 @@ function navigateSection(section: PortalSection): AdminRoute {
   if (section === 'users') return { name: 'users', query: '', cursor: null }
   if (section === 'disputes') return { name: 'disputes', cursor: null }
   if (section === 'operations') return { name: 'operations' }
-  if (section === 'reports') return { name: 'reports', status: 'open', targetType: 'all', cursor: null }
+  if (section === 'reports') return { name: 'reports', statuses: ['open'], targetTypes: [], cursor: null }
   return { name: section }
 }
 
@@ -213,7 +235,7 @@ function titleFor(route: AdminRoute, view: View): string {
   return 'Staff'
 }
 
-function Overview({ overview, userTotal, onOpen, onRefresh }: { overview: OperationsOverview | null; userTotal: number | null; onOpen: (route: AdminRoute) => void; onRefresh: () => void }) {
+function Overview({ overview, userTotal, reportTotals, onOpen, onRefresh }: { overview: OperationsOverview | null; userTotal: number | null; reportTotals: ReportTotals | null; onOpen: (route: AdminRoute) => void; onRefresh: () => void }) {
   const monitoring = monitoringHeadline(overview)
   return (
     <>
@@ -223,6 +245,11 @@ function Overview({ overview, userTotal, onOpen, onRefresh }: { overview: Operat
           <span className="metric-title">Total users</span>
           <span className="metric-value">{userTotal === null ? 'Unavailable' : String(userTotal)}</span>
           <span className="metric-detail">Active and suspended accounts</span>
+        </button>
+        <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'reports', statuses: ['open'], targetTypes: [], cursor: null })}>
+          <span className="metric-title">Open reports</span>
+          <span className="metric-value">{reportTotals === null ? 'Unavailable' : String(reportTotals.openReports)}</span>
+          <span className="metric-detail">{reportTotals === null ? 'Total not available' : `${reportTotals.totalReports} total reports`}</span>
         </button>
         <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'disputes', cursor: null })}>
           <span className="metric-title">Disputes</span>
@@ -525,7 +552,7 @@ function accountStatusMessage(result: { outcome: 'changed' | 'unchanged' | 'obse
 function backRoute(route: AdminRoute): AdminRoute {
   if (route.name === 'user') return { name: 'users', query: '', cursor: null }
   if (route.name === 'dispute') return { name: 'disputes', cursor: null }
-  if (route.name === 'report') return { name: 'reports', status: 'open', targetType: 'all', cursor: null }
+  if (route.name === 'report') return { name: 'reports', ...route.returnTo }
   return { name: 'home' }
 }
 
@@ -540,9 +567,10 @@ async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
     return { name: 'placeholder', section: route.name }
   }
   if (route.name === 'home') {
-    const [operationsResult, usersResult] = await Promise.all([
+    const [operationsResult, usersResult, reportsResult] = await Promise.all([
       records.operations(),
       records.searchUsers('', null),
+      records.reportSummary(),
     ])
     if (!operationsResult.ok && (operationsResult.kind === 'denied' || operationsResult.kind === 'expired')) {
       return failure(operationsResult.kind)
@@ -550,10 +578,14 @@ async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
     if (!usersResult.ok && (usersResult.kind === 'denied' || usersResult.kind === 'expired')) {
       return failure(usersResult.kind)
     }
+    if (!reportsResult.ok && (reportsResult.kind === 'denied' || reportsResult.kind === 'expired')) {
+      return failure(reportsResult.kind)
+    }
     return {
       name: 'overview',
       overview: operationsResult.ok ? operationsResult.data : null,
       userTotal: usersResult.ok ? usersResult.data.totalUsers : null,
+      reportTotals: reportsResult.ok ? reportsResult.data : null,
     }
   }
   if (route.name === 'users') {
@@ -580,17 +612,30 @@ async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
     return fromOne(await records.operations(), (overview) => ({ name: 'operations', overview }))
   }
   if (route.name === 'reports') {
-    const result = await records.reports({ status: route.status, targetType: route.targetType, cursor: route.cursor })
-    if (!result.ok) return failure(result.kind)
+    const result = await records.reports(route)
+    if (!result.ok) {
+      const phase = result.kind === 'denied' ? 'denied' : result.kind === 'expired' ? 'expired' : 'unavailable'
+      return {
+        name: 'reports',
+        statuses: route.statuses,
+        targetTypes: route.targetTypes,
+        items: [],
+        nextCursor: null,
+        matchCount: null,
+        phase,
+      }
+    }
     return {
       name: 'reports',
-      status: route.status,
-      targetType: route.targetType,
+      statuses: route.statuses,
+      targetTypes: route.targetTypes,
       items: result.data.items,
       nextCursor: result.data.nextCursor,
+      matchCount: result.data.matchCount,
+      phase: 'ready',
     }
   }
-  if (route.name === 'report') return fromOne(await records.report(route.id), (report) => ({ name: 'report', report }))
+  if (route.name === 'report') return fromOne(await records.report(route.id), (report) => ({ name: 'report', report, returnTo: route.returnTo }))
   return fromOne(await records.dispute(route.id), (dispute) => ({ name: 'dispute', dispute }))
 }
 

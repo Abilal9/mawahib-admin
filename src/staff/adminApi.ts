@@ -1,4 +1,4 @@
-import type { AccountStatusChange, AdminRecords, AdminResult, OperationsOverview, StaffUserDetail } from './adminTypes'
+import type { AccountStatusChange, AdminRecords, AdminResult, OperationsOverview, ReportTotals, StaffUserDetail } from './adminTypes'
 
 export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Promise<string | null>): AdminRecords {
   const base = apiBaseUrl.replace(/\/$/, '')
@@ -74,10 +74,13 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
     operations() {
       return get<OperationsOverview>('/admin/operations')
     },
+    reportSummary() {
+      return get<ReportTotals>('/admin/reports/summary')
+    },
     reports(query) {
       const params = new URLSearchParams()
-      if (query.status !== 'all') params.set('status', query.status)
-      if (query.targetType !== 'all') params.set('targetType', query.targetType)
+      for (const status of query.statuses) params.append('status', status)
+      for (const targetType of query.targetTypes) params.append('targetType', targetType)
       if (query.cursor) params.set('cursor', query.cursor)
       const suffix = params.size > 0 ? `?${params.toString()}` : ''
       return get(`/admin/reports${suffix}`)

@@ -65,8 +65,11 @@ function records(partial: Partial<AdminRecords> = {}): AdminRecords {
     async operations() {
       return { ok: true, data: operationsOverview() }
     },
+    async reportSummary() {
+      return { ok: true as const, data: { openReports: 4, totalReports: 9 } }
+    },
     async reports() {
-      return { ok: true, data: { items: [], nextCursor: null } }
+      return { ok: true, data: { items: [], nextCursor: null, matchCount: 0 } }
     },
     async report() {
       return { ok: false as const, kind: 'not-found' as const }
@@ -617,6 +620,9 @@ describe('AdminShell', () => {
     expect(await screen.findByRole('heading', { name: 'Overview' })).toBeTruthy()
     expect(screen.getByText('Total users')).toBeTruthy()
     expect(screen.getByText('3')).toBeTruthy()
+    expect(screen.getByText('Open reports')).toBeTruthy()
+    expect(screen.getByText('4')).toBeTruthy()
+    expect(screen.getByText('9 total reports')).toBeTruthy()
     expect(screen.getByText('View open disputes')).toBeTruthy()
     expect(screen.getByText('Total not available')).toBeTruthy()
     expect(screen.getByText('Readings current')).toBeTruthy()
@@ -626,10 +632,39 @@ describe('AdminShell', () => {
     expect(await screen.findByText(/Marketplace oversight is not connected/)).toBeTruthy()
     expect(screen.queryByText('Omar Al-Harbi')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Reports' }))
-    expect(await screen.findByText('No reports match these filters.')).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Reports' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'All targets' })).toBeTruthy()
+    expect(screen.getByText('No reports match these filters.')).toBeTruthy()
+    expect(screen.getByText('Matching reports: 0')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Payments' }))
     expect(await screen.findByText(/Payment and invoice lists are not connected/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Staff' }))
     expect(await screen.findByText(/operator commands/)).toBeTruthy()
+  })
+
+  it('keeps report filters mounted and drops a late response', async () => {
+    let resolveFirst: (value: { ok: true; data: { items: []; nextCursor: null; matchCount: number } }) => void = () => undefined
+    const first = new Promise<{ ok: true; data: { items: []; nextCursor: null; matchCount: number } }>((resolve) => {
+      resolveFirst = resolve
+    })
+    let calls = 0
+    render(<AdminShell records={records({
+      async reports() {
+        calls += 1
+        if (calls === 1) return first
+        return { ok: true, data: { items: [], nextCursor: null, matchCount: 2 } }
+      },
+    })} onSignOut={() => undefined} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Reports' }))
+    expect(await screen.findByRole('button', { name: 'Statuses' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Statuses' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Resolved' }))
+    expect(await screen.findByText('Matching reports: 2')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Reports' })).toBeTruthy()
+    await act(async () => {
+      resolveFirst({ ok: true, data: { items: [], nextCursor: null, matchCount: 99 } })
+    })
+    expect(screen.queryByText('Matching reports: 99')).toBeNull()
+    expect(screen.getByText('Matching reports: 2')).toBeTruthy()
   })
 })
