@@ -1,4 +1,4 @@
-import type { AccountStatusChange, AdminRecords, AdminResult, OperationsOverview, ReportTotals, StaffUserDetail } from './adminTypes'
+import type { AccountStatusChange, AdminRecords, AdminResult, MarketplaceQuery, OperationsOverview, ReportTotals, StaffUserDetail } from './adminTypes'
 
 export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Promise<string | null>): AdminRecords {
   const base = apiBaseUrl.replace(/\/$/, '')
@@ -121,10 +121,53 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
         return { ok: false, kind: 'uncertain' }
       }
     },
+    jobs(query) {
+      return marketQuery(get, 'jobs', query)
+    },
+    job(id) {
+      return get(`/admin/jobs/${encodeURIComponent(id)}`)
+    },
+    services(query) {
+      return marketQuery(get, 'services', query)
+    },
+    service(id) {
+      return get(`/admin/services/${encodeURIComponent(id)}`)
+    },
+    applications(query) {
+      return marketQuery(get, 'applications', query)
+    },
+    application(id) {
+      return get(`/admin/applications/${encodeURIComponent(id)}`)
+    },
+    engagements(query) {
+      return marketQuery(get, 'engagements', query)
+    },
+    engagement(id) {
+      return get(`/admin/engagements/${encodeURIComponent(id)}`)
+    },
   }
 }
 
 class MissingToken extends Error {}
+
+function marketQuery<T>(
+  get: <TResult>(path: string) => Promise<AdminResult<TResult>>,
+  kind: 'jobs' | 'services' | 'applications' | 'engagements',
+  query: MarketplaceQuery,
+): Promise<AdminResult<T>> {
+  const params = new URLSearchParams()
+  const q = query.q.trim()
+  if (q) params.set('q', q)
+  if (query.statuses.length > 0) params.set('status', query.statuses.join(','))
+  if (kind === 'jobs' && query.employmentTypes.length > 0) params.set('employmentType', query.employmentTypes.join(','))
+  if (kind === 'engagements' && query.sources.length > 0) params.set('source', query.sources.join(','))
+  if (query.includeDeleted) params.set('includeDeleted', 'true')
+  if ((kind === 'applications' || kind === 'engagements') && query.listingId) params.set('listingId', query.listingId)
+  if (kind === 'engagements' && query.serviceOfferingId) params.set('serviceOfferingId', query.serviceOfferingId)
+  if (query.cursor) params.set('cursor', query.cursor)
+  const suffix = params.size > 0 ? `?${params.toString()}` : ''
+  return get<T>(`/admin/${kind}${suffix}`)
+}
 
 async function classify<T>(response: Response): Promise<AdminResult<T>> {
   if (response.status === 401) return { ok: false, kind: 'expired' }

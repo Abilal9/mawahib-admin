@@ -350,6 +350,30 @@ function previewRecords(mode: string): AdminRecords {
     async setContentVisibility() {
       return { ok: false, kind: 'unavailable' }
     },
+    async jobs() {
+      return { ok: true, data: { items: [], nextCursor: null, total: 0, matchCount: 0 } }
+    },
+    async job() {
+      return { ok: false, kind: 'not-found' }
+    },
+    async services() {
+      return { ok: true, data: { items: [], nextCursor: null, total: 0, matchCount: 0 } }
+    },
+    async service() {
+      return { ok: false, kind: 'not-found' }
+    },
+    async applications() {
+      return { ok: true, data: { items: [], nextCursor: null, total: 0, matchCount: 0 } }
+    },
+    async application() {
+      return { ok: false, kind: 'not-found' }
+    },
+    async engagements() {
+      return { ok: true, data: { items: [], nextCursor: null, total: 0, matchCount: 0 } }
+    },
+    async engagement() {
+      return { ok: false, kind: 'not-found' }
+    },
   }
 }
 

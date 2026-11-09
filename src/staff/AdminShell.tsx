@@ -4,6 +4,8 @@ import { OPERATIONS_POLL_MS, OperationsView } from './OperationsView'
 import { ReportDetail, ReportsList } from './ReportsView'
 import { ButtonSpinner, LoadingIndicator } from './LoadingIndicator'
 import { PortalFrame, type PortalSection } from '../portal/PortalFrame'
+import { EMPTY_MARKETPLACE, type MarketplaceQuery, type MarketplaceTab, type StaffApplicationDetail, type StaffApplicationListItem, type StaffEngagementDetail, type StaffEngagementListItem, type StaffJobDetail, type StaffJobListItem, type StaffServiceDetail, type StaffServiceListItem } from './adminTypes'
+import { MarketplaceDetail, MarketplaceList, type MarketplacePhase } from './MarketplaceView'
 
 type PlaceholderSection = 'marketplace' | 'payments' | 'staff'
 
@@ -17,6 +19,8 @@ type View =
   | { name: 'operations'; overview: OperationsOverview }
   | { name: 'reports'; statuses: ReportListQuery['statuses']; targetTypes: ReportListQuery['targetTypes']; exactTarget: ReportListQuery['exactTarget']; items: StaffReportSummary[]; nextCursor: string | null; matchCount: number | null; phase: 'loading' | 'ready' | 'unavailable' | 'denied' | 'expired' }
   | { name: 'report'; report: StaffReportDetail; returnTo: ReportListQuery }
+  | { name: 'marketplace'; query: MarketplaceQuery; items: Array<StaffJobListItem | StaffServiceListItem | StaffApplicationListItem | StaffEngagementListItem>; nextCursor: string | null; total: number | null; matchCount: number | null; phase: MarketplacePhase }
+  | { name: 'marketplace-detail'; tab: MarketplaceTab; id: string; returnTo: MarketplaceQuery; record: StaffJobDetail | StaffServiceDetail | StaffApplicationDetail | StaffEngagementDetail | null; phase: MarketplacePhase }
   | { name: 'placeholder'; section: PlaceholderSection }
   | { name: 'empty'; message: string }
   | { name: 'denied' }
@@ -59,6 +63,25 @@ export function AdminShell({
         matchCount: null,
         phase: 'loading',
       })
+    } else if (route.name === 'marketplace') {
+      setView({
+        name: 'marketplace',
+        query: marketQuery(route),
+        items: [],
+        nextCursor: null,
+        total: null,
+        matchCount: null,
+        phase: 'loading',
+      })
+    } else if (route.name === 'marketplace-detail') {
+      setView({
+        name: 'marketplace-detail',
+        tab: route.tab,
+        id: route.id,
+        returnTo: route.returnTo,
+        record: null,
+        phase: 'loading',
+      })
     } else {
       setView({ name: 'loading' })
     }
@@ -69,6 +92,7 @@ export function AdminShell({
         return
       }
       if (next.name === 'reports' && (next.phase === 'denied' || next.phase === 'expired') && onAccessDenied) onAccessDenied()
+      if ((next.name === 'marketplace' || next.name === 'marketplace-detail') && (next.phase === 'denied' || next.phase === 'expired') && onAccessDenied) onAccessDenied()
       setView(next)
     })
     return () => {
@@ -193,6 +217,34 @@ export function AdminShell({
           onMore={() => open({ name: 'reports', statuses: view.statuses, targetTypes: view.targetTypes, exactTarget: view.exactTarget, cursor: view.nextCursor })}
         />
       ) : null}
+      {view.name === 'marketplace' ? (
+        <MarketplaceList
+          query={view.query}
+          items={view.items}
+          nextCursor={view.nextCursor}
+          total={view.total}
+          matchCount={view.matchCount}
+          phase={view.phase}
+          onChange={(next) => open({ name: 'marketplace', ...next })}
+          onOpen={(id) => open({ name: 'marketplace-detail', tab: view.query.tab, id, returnTo: { ...view.query, cursor: route.name === 'marketplace' ? route.cursor : null } })}
+          onOpenUser={(id) => open({ name: 'user', id })}
+        />
+      ) : null}
+      {view.name === 'marketplace-detail' ? (
+        <MarketplaceDetail
+          tab={view.tab}
+          record={view.record}
+          phase={view.phase}
+          onOpenUser={(id) => open({ name: 'user', id })}
+          onOpenJob={(id) => open({ name: 'marketplace-detail', tab: 'jobs', id, returnTo: view.returnTo })}
+          onOpenService={(id) => open({ name: 'marketplace-detail', tab: 'services', id, returnTo: view.returnTo })}
+          onOpenApplication={(id) => open({ name: 'marketplace-detail', tab: 'applications', id, returnTo: view.returnTo })}
+          onOpenEngagement={(id) => open({ name: 'marketplace-detail', tab: 'engagements', id, returnTo: view.returnTo })}
+          onOpenApplications={(listingId) => open({ name: 'marketplace', ...EMPTY_MARKETPLACE, tab: 'applications', listingId })}
+          onOpenEngagements={(filter) => open({ name: 'marketplace', ...EMPTY_MARKETPLACE, tab: 'engagements', listingId: filter.listingId ?? null, serviceOfferingId: filter.serviceOfferingId ?? null })}
+          onOpenDispute={(id) => open({ name: 'dispute', id })}
+        />
+      ) : null}
       {view.name === 'report' ? (
         <ReportDetail
           report={view.report}
@@ -218,6 +270,7 @@ function navigateSection(section: PortalSection): AdminRoute {
   if (section === 'disputes') return { name: 'disputes', cursor: null }
   if (section === 'operations') return { name: 'operations' }
   if (section === 'reports') return { name: 'reports', statuses: ['open'], targetTypes: [], exactTarget: null, cursor: null }
+  if (section === 'marketplace') return { name: 'marketplace', ...EMPTY_MARKETPLACE }
   return { name: section }
 }
 
@@ -226,7 +279,8 @@ function sectionFor(route: AdminRoute): PortalSection {
   if (route.name === 'user') return 'users'
   if (route.name === 'dispute') return 'disputes'
   if (route.name === 'report') return 'reports'
-  if (route.name === 'marketplace' || route.name === 'reports' || route.name === 'payments' || route.name === 'staff') return route.name
+  if (route.name === 'marketplace' || route.name === 'marketplace-detail') return 'marketplace'
+  if (route.name === 'payments' || route.name === 'staff') return route.name
   return route.name
 }
 
@@ -242,7 +296,7 @@ function titleFor(route: AdminRoute, view: View): string {
   if (route.name === 'user') return 'Account'
   if (route.name === 'disputes' || route.name === 'dispute') return 'Disputes'
   if (route.name === 'operations') return 'Monitoring'
-  if (route.name === 'marketplace') return 'Marketplace'
+  if (route.name === 'marketplace' || route.name === 'marketplace-detail') return 'Marketplace'
   if (route.name === 'reports') return 'Reports'
   if (route.name === 'report') return 'Report'
   if (route.name === 'payments') return 'Payments'
@@ -568,6 +622,7 @@ function backRoute(route: AdminRoute): AdminRoute {
   if (route.name === 'user') return { name: 'users', query: '', cursor: null }
   if (route.name === 'dispute') return { name: 'disputes', cursor: null }
   if (route.name === 'report') return { name: 'reports', ...route.returnTo }
+  if (route.name === 'marketplace-detail') return { name: 'marketplace', ...route.returnTo }
   return { name: 'home' }
 }
 
@@ -578,7 +633,7 @@ function formatWhen(value: string): string {
 }
 
 async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
-  if (route.name === 'marketplace' || route.name === 'payments' || route.name === 'staff') {
+  if (route.name === 'payments' || route.name === 'staff') {
     return { name: 'placeholder', section: route.name }
   }
   if (route.name === 'home') {
@@ -653,7 +708,62 @@ async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
     }
   }
   if (route.name === 'report') return fromOne(await records.report(route.id), (report) => ({ name: 'report', report, returnTo: route.returnTo }))
+  if (route.name === 'marketplace') return loadMarketplace(records, route)
+  if (route.name === 'marketplace-detail') return loadMarketplaceDetail(records, route)
   return fromOne(await records.dispute(route.id), (dispute) => ({ name: 'dispute', dispute }))
+}
+
+function marketQuery(route: MarketplaceQuery): MarketplaceQuery {
+  return {
+    tab: route.tab,
+    q: route.q,
+    statuses: route.statuses,
+    employmentTypes: route.employmentTypes,
+    sources: route.sources,
+    includeDeleted: route.includeDeleted,
+    listingId: route.listingId,
+    serviceOfferingId: route.serviceOfferingId,
+    cursor: route.cursor,
+  }
+}
+
+async function loadMarketplace(records: AdminRecords, route: MarketplaceQuery & { name: 'marketplace' }): Promise<View> {
+  const query = marketQuery(route)
+  const result = route.tab === 'jobs'
+    ? await records.jobs(query)
+    : route.tab === 'services'
+      ? await records.services(query)
+      : route.tab === 'applications'
+        ? await records.applications(query)
+        : await records.engagements(query)
+  if (!result.ok) {
+    const phase = result.kind === 'denied' ? 'denied' : result.kind === 'expired' ? 'expired' : 'unavailable'
+    return { name: 'marketplace', query, items: [], nextCursor: null, total: null, matchCount: null, phase }
+  }
+  return {
+    name: 'marketplace',
+    query,
+    items: result.data.items,
+    nextCursor: result.data.nextCursor,
+    total: result.data.total,
+    matchCount: result.data.matchCount,
+    phase: 'ready',
+  }
+}
+
+async function loadMarketplaceDetail(records: AdminRecords, route: { tab: MarketplaceTab; id: string; returnTo: MarketplaceQuery }): Promise<View> {
+  const result = route.tab === 'jobs'
+    ? await records.job(route.id)
+    : route.tab === 'services'
+      ? await records.service(route.id)
+      : route.tab === 'applications'
+        ? await records.application(route.id)
+        : await records.engagement(route.id)
+  if (!result.ok) {
+    const phase = result.kind === 'denied' ? 'denied' : result.kind === 'expired' ? 'expired' : result.kind === 'not-found' ? 'ready' : 'unavailable'
+    return { name: 'marketplace-detail', tab: route.tab, id: route.id, returnTo: route.returnTo, record: null, phase: phase === 'ready' ? 'ready' : phase }
+  }
+  return { name: 'marketplace-detail', tab: route.tab, id: route.id, returnTo: route.returnTo, record: result.data, phase: 'ready' }
 }
 
 function fromPage<T>(

@@ -80,6 +80,30 @@ function records(partial: Partial<AdminRecords> = {}): AdminRecords {
     async setContentVisibility() {
       return { ok: false as const, kind: 'unavailable' as const }
     },
+    async jobs() {
+      return { ok: true as const, data: { items: [], nextCursor: null, total: 0, matchCount: 0 } }
+    },
+    async job() {
+      return { ok: false as const, kind: 'not-found' as const }
+    },
+    async services() {
+      return { ok: true as const, data: { items: [], nextCursor: null, total: 0, matchCount: 0 } }
+    },
+    async service() {
+      return { ok: false as const, kind: 'not-found' as const }
+    },
+    async applications() {
+      return { ok: true as const, data: { items: [], nextCursor: null, total: 0, matchCount: 0 } }
+    },
+    async application() {
+      return { ok: false as const, kind: 'not-found' as const }
+    },
+    async engagements() {
+      return { ok: true as const, data: { items: [], nextCursor: null, total: 0, matchCount: 0 } }
+    },
+    async engagement() {
+      return { ok: false as const, kind: 'not-found' as const }
+    },
     ...partial,
   }
 }
@@ -637,7 +661,10 @@ describe('AdminShell', () => {
     expect(screen.queryByText('Not connected')).toBeNull()
     expect(screen.queryByText(/^0$/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Marketplace' }))
-    expect(await screen.findByText(/Marketplace oversight is not connected/)).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Marketplace' })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: 'Jobs' })).toBeTruthy()
+    expect(screen.getByText('No jobs match these filters.')).toBeTruthy()
+    expect(screen.getByText('Total jobs: 0')).toBeTruthy()
     expect(screen.queryByText('Omar Al-Harbi')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Reports' }))
     expect(await screen.findByRole('heading', { name: 'Reports' })).toBeTruthy()

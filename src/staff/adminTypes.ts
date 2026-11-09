@@ -158,6 +158,14 @@ export type AdminRecords = {
     id: string,
     input: { hidden: boolean; expectedVersion: number; reason: string },
   ): Promise<AdminResult<{ outcome: 'changed' | 'unchanged'; hidden: boolean; hiddenAt: string | null; version: number }>>
+  jobs(query: MarketplaceQuery): Promise<AdminResult<MarketplacePage<StaffJobListItem>>>
+  job(id: string): Promise<AdminResult<StaffJobDetail>>
+  services(query: MarketplaceQuery): Promise<AdminResult<MarketplacePage<StaffServiceListItem>>>
+  service(id: string): Promise<AdminResult<StaffServiceDetail>>
+  applications(query: MarketplaceQuery): Promise<AdminResult<MarketplacePage<StaffApplicationListItem>>>
+  application(id: string): Promise<AdminResult<StaffApplicationDetail>>
+  engagements(query: MarketplaceQuery): Promise<AdminResult<MarketplacePage<StaffEngagementListItem>>>
+  engagement(id: string): Promise<AdminResult<StaffEngagementDetail>>
 }
 
 export type AdminRoute =
@@ -169,9 +177,123 @@ export type AdminRoute =
   | { name: 'operations' }
   | ({ name: 'reports' } & ReportListQuery)
   | { name: 'report'; id: string; returnTo: ReportListQuery }
-  | { name: 'marketplace' }
+  | ({ name: 'marketplace' } & MarketplaceQuery)
+  | { name: 'marketplace-detail'; tab: MarketplaceTab; id: string; returnTo: MarketplaceQuery }
   | { name: 'payments' }
   | { name: 'staff' }
+
+export type MarketplaceTab = 'jobs' | 'services' | 'applications' | 'engagements'
+
+export type MarketplaceQuery = {
+  tab: MarketplaceTab
+  q: string
+  statuses: string[]
+  employmentTypes: string[]
+  sources: string[]
+  includeDeleted: boolean
+  listingId: string | null
+  serviceOfferingId: string | null
+  cursor: string | null
+}
+
+export const EMPTY_MARKETPLACE: MarketplaceQuery = {
+  tab: 'jobs',
+  q: '',
+  statuses: [],
+  employmentTypes: [],
+  sources: [],
+  includeDeleted: false,
+  listingId: null,
+  serviceOfferingId: null,
+  cursor: null,
+}
+
+export type StaffParty = { id: string; displayName: string; deleted: boolean }
+
+export type StaffJobListItem = {
+  id: string
+  title: string
+  companyName: string | null
+  status: string
+  employmentType: string
+  poster: StaffParty | null
+  applicationCount: number
+  postedAt: string | null
+  createdAt: string
+  deletedAt: string | null
+}
+
+export type StaffJobDetail = StaffJobListItem & {
+  location: string
+  updatedAt: string
+  category: { id: string; nameEn: string } | null
+  customCategory: string | null
+  pricing: { type: string; currency: string; fixedAmount: string | null; minAmount: string | null; maxAmount: string | null }
+  engagementCount: number
+}
+
+export type StaffServiceListItem = {
+  id: string
+  title: string
+  status: string
+  owner: StaffParty | null
+  currency: string
+  fromPrice: string | null
+  packageCount: number
+  createdAt: string
+  updatedAt: string
+  deletedAt: string | null
+}
+
+export type StaffServiceDetail = StaffServiceListItem & {
+  category: { id: string; nameEn: string } | null
+  customCategory: string | null
+  packages: Array<{ id: string; tier: string; price: string; currency: string; deliveryLabel: string }>
+  engagementCount: number
+}
+
+export type StaffApplicationListItem = {
+  id: string
+  status: string
+  createdAt: string
+  updatedAt: string
+  deletedAt: string | null
+  listing: { id: string; title: string; status: string; deleted: boolean } | null
+  applicant: StaffParty | null
+  poster: StaffParty | null
+  engagementId: string | null
+}
+
+export type StaffApplicationDetail = StaffApplicationListItem & {
+  engagement: { id: string; status: string; deleted: boolean } | null
+}
+
+export type StaffEngagementListItem = {
+  id: string
+  title: string
+  status: string
+  source: string
+  client: StaffParty | null
+  provider: StaffParty | null
+  listingId: string | null
+  applicationId: string | null
+  serviceOfferingId: string | null
+  payment: StaffDisputePayment | null
+  createdAt: string
+  updatedAt: string
+  completedAt: string | null
+  deletedAt: string | null
+}
+
+export type StaffEngagementDetail = StaffEngagementListItem & {
+  dueAt: string | null
+  reviewWindowClosesAt: string | null
+  listing: { id: string; title: string; deleted: boolean } | null
+  serviceOffering: { id: string; title: string; deleted: boolean } | null
+  disputeLink: string | null
+}
+
+export type MarketplacePage<T> = { items: T[]; nextCursor: string | null; total: number; matchCount: number }
 
 export type OpsState = 'up' | 'down' | 'degraded' | 'paused' | 'unknown' | 'unavailable' | 'not_configured' | 'not_available'
 
