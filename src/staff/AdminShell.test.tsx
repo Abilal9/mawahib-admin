@@ -107,6 +107,9 @@ function records(partial: Partial<AdminRecords> = {}): AdminRecords {
     async marketplaceSummary() {
       return { ok: true as const, data: { totalJobs: 8, totalEngagements: 5 } }
     },
+    async invoiceDocument() {
+      return { ok: false as const, kind: 'not-found' as const }
+    },
     ...partial,
   }
 }

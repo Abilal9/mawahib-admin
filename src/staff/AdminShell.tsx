@@ -253,6 +253,10 @@ export function AdminShell({
           onOpenApplications={(listingId) => open({ name: 'marketplace', ...EMPTY_MARKETPLACE, tab: 'applications', listingId })}
           onOpenEngagements={(filter) => open({ name: 'marketplace', ...EMPTY_MARKETPLACE, tab: 'engagements', listingId: filter.listingId ?? null, serviceOfferingId: filter.serviceOfferingId ?? null })}
           onOpenDispute={(id) => open({ name: 'dispute', id })}
+          onViewInvoice={async (id) => {
+            const result = await records.invoiceDocument(id)
+            return result.ok ? { url: result.data.url, originalFileName: result.data.originalFileName } : null
+          }}
         />
       ) : null}
       {view.name === 'report' ? (

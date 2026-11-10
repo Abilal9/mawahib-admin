@@ -377,6 +377,9 @@ function previewRecords(mode: string): AdminRecords {
     async marketplaceSummary() {
       return { ok: true, data: { totalJobs: 0, totalEngagements: 0 } }
     },
+    async invoiceDocument() {
+      return { ok: false, kind: 'not-found' }
+    },
   }
 }
 

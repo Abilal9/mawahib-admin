@@ -148,6 +148,9 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
     engagement(id) {
       return get(`/admin/engagements/${encodeURIComponent(id)}`)
     },
+    invoiceDocument(id) {
+      return get<{ url: string; originalFileName: string; mimeType: string }>(`/admin/invoices/${encodeURIComponent(id)}/document`)
+    },
   }
 }
 

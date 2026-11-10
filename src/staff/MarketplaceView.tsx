@@ -132,6 +132,7 @@ export function MarketplaceDetail({
   onOpenApplications,
   onOpenEngagements,
   onOpenDispute,
+  onViewInvoice,
 }: {
   tab: MarketplaceTab
   record: StaffJobDetail | StaffServiceDetail | StaffApplicationDetail | StaffEngagementDetail | null
@@ -144,16 +145,17 @@ export function MarketplaceDetail({
   onOpenApplications: (listingId: string) => void
   onOpenEngagements: (filter: { listingId?: string; serviceOfferingId?: string }) => void
   onOpenDispute: (id: string) => void
+  onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null>
 }) {
   if (phase === 'loading') return <LoadingIndicator compact label="Loading record" />
   if (phase === 'unavailable') return <p role="alert">This record is temporarily unavailable.</p>
   if (phase === 'denied') return <p role="alert">Staff access is not active for this account.</p>
   if (phase === 'expired') return <p role="alert">Your session has expired. Sign in again.</p>
   if (!record) return <p role="alert">That record is not available.</p>
-  if (tab === 'jobs' && 'employmentType' in record) return <JobDetail record={record} onOpenUser={onOpenUser} onOpenApplications={onOpenApplications} onOpenEngagements={onOpenEngagements} />
+  if (tab === 'jobs' && 'employmentType' in record) return <JobDetail record={record} onOpenUser={onOpenUser} onOpenApplications={onOpenApplications} onOpenEngagements={onOpenEngagements} onViewInvoice={onViewInvoice} />
   if (tab === 'services' && 'packageCount' in record) return <ServiceDetail record={record as StaffServiceDetail} onOpenUser={onOpenUser} onOpenEngagements={onOpenEngagements} />
   if (tab === 'applications' && 'applicant' in record) return <ApplicationDetail record={record as StaffApplicationDetail} onOpenUser={onOpenUser} onOpenJob={onOpenJob} onOpenEngagement={onOpenEngagement} />
-  if (tab === 'engagements' && 'source' in record) return <EngagementDetail record={record as StaffEngagementDetail} onOpenUser={onOpenUser} onOpenJob={onOpenJob} onOpenService={onOpenService} onOpenApplication={onOpenApplication} onOpenDispute={onOpenDispute} />
+  if (tab === 'engagements' && 'source' in record) return <EngagementDetail record={record as StaffEngagementDetail} onOpenUser={onOpenUser} onOpenJob={onOpenJob} onOpenService={onOpenService} onOpenApplication={onOpenApplication} onOpenDispute={onOpenDispute} onViewInvoice={onViewInvoice} />
   return <p role="alert">That record is not available.</p>
 }
 
@@ -397,7 +399,7 @@ function EngagementRow({ item, onOpenUser }: { item: StaffEngagementListItem; on
   )
 }
 
-function JobDetail({ record, onOpenUser, onOpenApplications, onOpenEngagements }: { record: StaffJobDetail; onOpenUser: (id: string) => void; onOpenApplications: (listingId: string) => void; onOpenEngagements: (filter: { listingId?: string }) => void }) {
+function JobDetail({ record, onOpenUser, onOpenApplications, onOpenEngagements, onViewInvoice }: { record: StaffJobDetail; onOpenUser: (id: string) => void; onOpenApplications: (listingId: string) => void; onOpenEngagements: (filter: { listingId?: string }) => void; onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null> }) {
   return (
     <section className="demo-list">
       <p>{labelWord(record.status)} · {labelWord(record.employmentType)}{record.deletedAt ? ' · Deleted' : ''}</p>
@@ -406,6 +408,14 @@ function JobDetail({ record, onOpenUser, onOpenApplications, onOpenEngagements }
       <p>Price: {record.pricing.type} {record.pricing.fixedAmount ?? record.pricing.minAmount ?? 'not set'} {record.pricing.currency}</p>
       <p><button type="button" onClick={() => onOpenApplications(record.id)}>{record.applicationCount} active applications</button></p>
       <p><button type="button" onClick={() => onOpenEngagements({ listingId: record.id })}>{record.engagementCount} active engagements</button></p>
+      <h2>Invoices</h2>
+      {record.engagements.length === 0 ? <p>No invoice issued</p> : record.engagements.map((engagement) => (
+        <article key={engagement.id} className="demo-panel">
+          <p><strong>{engagement.title}</strong> · {labelWord(engagement.status)}{engagement.deleted ? ' · Deleted' : ''}</p>
+          <p>Client: <Party party={engagement.client} onOpen={onOpenUser} /> · Provider: <Party party={engagement.provider} onOpen={onOpenUser} /></p>
+          <PaymentAttempts payments={engagement.payments} onViewInvoice={onViewInvoice} />
+        </article>
+      ))}
     </section>
   )
 }
@@ -434,7 +444,7 @@ function ApplicationDetail({ record, onOpenUser, onOpenJob, onOpenEngagement }: 
   )
 }
 
-function EngagementDetail({ record, onOpenUser, onOpenJob, onOpenService, onOpenApplication, onOpenDispute }: { record: StaffEngagementDetail; onOpenUser: (id: string) => void; onOpenJob: (id: string) => void; onOpenService: (id: string) => void; onOpenApplication: (id: string) => void; onOpenDispute: (id: string) => void }) {
+function EngagementDetail({ record, onOpenUser, onOpenJob, onOpenService, onOpenApplication, onOpenDispute, onViewInvoice }: { record: StaffEngagementDetail; onOpenUser: (id: string) => void; onOpenJob: (id: string) => void; onOpenService: (id: string) => void; onOpenApplication: (id: string) => void; onOpenDispute: (id: string) => void; onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null> }) {
   return (
     <section className="demo-list">
       <p>{labelWord(record.status)} · {labelWord(record.source)}{record.deletedAt ? ' · Deleted' : ''}</p>
@@ -444,8 +454,61 @@ function EngagementDetail({ record, onOpenUser, onOpenJob, onOpenService, onOpen
       {record.serviceOffering ? <p><button type="button" onClick={() => onOpenService(record.serviceOffering!.id)}>{record.serviceOffering.title}</button></p> : null}
       {record.applicationId ? <p><button type="button" onClick={() => onOpenApplication(record.applicationId!)}>View application</button></p> : null}
       {record.disputeLink ? <p><button type="button" onClick={() => onOpenDispute(record.disputeLink!)}>View dispute</button></p> : null}
+      <h2>Invoices</h2>
+      <PaymentAttempts payments={record.payments} onViewInvoice={onViewInvoice} />
     </section>
   )
+}
+
+function PaymentAttempts({ payments, onViewInvoice }: { payments: StaffEngagementDetail['payments']; onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null> }) {
+  const [notice, setNotice] = useState<string | null>(null)
+  if (payments.length === 0) return <p>No invoice issued</p>
+  return (
+    <div className="demo-list">
+      {payments.map((payment) => (
+        <article key={payment.id} className="demo-panel">
+          <p>Payment {payment.amount} {payment.currency} · {labelWord(payment.status)}</p>
+          {payment.simulated ? <p>Simulated — no real payment</p> : null}
+          {payment.invoice ? (
+            <>
+              <p>Invoice {payment.invoice.invoiceNumber}</p>
+              <p>{payment.invoice.issuedAt ? `Issued ${new Date(payment.invoice.issuedAt).toLocaleDateString()}` : 'Issue date not recorded'}</p>
+              <p>{payment.invoice.amount} {payment.invoice.currency} · {labelWord(payment.invoice.status)}</p>
+              {payment.invoice.simulated ? <p>Simulated — no real payment</p> : null}
+              {payment.invoice.hasDocument ? (
+                <p>
+                  <button type="button" onClick={() => void openInvoice(payment.invoice!.id, onViewInvoice, setNotice, false)}>View invoice</button>
+                  {' '}
+                  <button type="button" onClick={() => void openInvoice(payment.invoice!.id, onViewInvoice, setNotice, true)}>Download</button>
+                </p>
+              ) : null}
+            </>
+          ) : <p>No invoice issued</p>}
+        </article>
+      ))}
+      {notice ? <p role="alert">{notice}</p> : null}
+    </div>
+  )
+}
+
+async function openInvoice(
+  id: string,
+  onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null>,
+  setNotice: (value: string | null) => void,
+  download: boolean,
+) {
+  setNotice(null)
+  const file = await onViewInvoice(id)
+  if (!file) {
+    setNotice('The invoice file is not available.')
+    return
+  }
+  const link = document.createElement('a')
+  link.href = file.url
+  link.target = '_blank'
+  link.rel = 'noopener noreferrer'
+  if (download) link.download = file.originalFileName
+  link.click()
 }
 
 function Party({ party, onOpen }: { party: StaffParty | null; onOpen: (id: string) => void }) {

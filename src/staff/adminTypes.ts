@@ -167,6 +167,7 @@ export type AdminRecords = {
   application(id: string): Promise<AdminResult<StaffApplicationDetail>>
   engagements(query: MarketplaceQuery): Promise<AdminResult<MarketplacePage<StaffEngagementListItem>>>
   engagement(id: string): Promise<AdminResult<StaffEngagementDetail>>
+  invoiceDocument(id: string): Promise<AdminResult<{ url: string; originalFileName: string; mimeType: string }>>
 }
 
 export type AdminRoute =
@@ -231,6 +232,7 @@ export type StaffJobDetail = StaffJobListItem & {
   customCategory: string | null
   pricing: { type: string; currency: string; fixedAmount: string | null; minAmount: string | null; maxAmount: string | null }
   engagementCount: number
+  engagements: StaffEngagementInvoices[]
 }
 
 export type StaffServiceListItem = {
@@ -286,12 +288,42 @@ export type StaffEngagementListItem = {
   deletedAt: string | null
 }
 
+export type StaffPaymentAttempt = {
+  id: string
+  amount: string
+  currency: string
+  status: string
+  simulated: boolean
+  createdAt: string
+  invoice: {
+    id: string
+    invoiceNumber: string
+    issuedAt: string | null
+    amount: string
+    currency: string
+    status: string
+    simulated: boolean
+    hasDocument: boolean
+  } | null
+}
+
+export type StaffEngagementInvoices = {
+  id: string
+  title: string
+  status: string
+  deleted: boolean
+  client: StaffParty | null
+  provider: StaffParty | null
+  payments: StaffPaymentAttempt[]
+}
+
 export type StaffEngagementDetail = StaffEngagementListItem & {
   dueAt: string | null
   reviewWindowClosesAt: string | null
   listing: { id: string; title: string; deleted: boolean } | null
   serviceOffering: { id: string; title: string; deleted: boolean } | null
   disputeLink: string | null
+  payments: StaffPaymentAttempt[]
 }
 
 export type MarketplacePage<T> = { items: T[]; nextCursor: string | null; total: number; matchCount: number }
