@@ -121,6 +121,9 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
         return { ok: false, kind: 'uncertain' }
       }
     },
+    marketplaceSummary() {
+      return get<{ totalJobs: number; totalEngagements: number }>('/admin/marketplace/summary')
+    },
     jobs(query) {
       return marketQuery(get, 'jobs', query)
     },

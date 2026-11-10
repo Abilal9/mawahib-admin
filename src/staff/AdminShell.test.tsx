@@ -104,6 +104,9 @@ function records(partial: Partial<AdminRecords> = {}): AdminRecords {
     async engagement() {
       return { ok: false as const, kind: 'not-found' as const }
     },
+    async marketplaceSummary() {
+      return { ok: true as const, data: { totalJobs: 8, totalEngagements: 5 } }
+    },
     ...partial,
   }
 }
@@ -495,7 +498,7 @@ describe('AdminShell', () => {
       />,
     )
     expect(await screen.findByRole('heading', { name: 'Monitoring' })).toBeTruthy()
-    expect(screen.getByText('Unknown')).toBeTruthy()
+    expect(await screen.findByText('Unknown')).toBeTruthy()
     expect(screen.getAllByText('Down')).toHaveLength(2)
     expect(screen.getByText('Stale')).toBeTruthy()
     expect(screen.getByText('Current status could not be verified. This reading is not current.')).toBeTruthy()
@@ -656,7 +659,10 @@ describe('AdminShell', () => {
     expect(screen.getByText('4')).toBeTruthy()
     expect(screen.getByText('9 total reports')).toBeTruthy()
     expect(screen.getByText('View open disputes')).toBeTruthy()
-    expect(screen.getByText('Total not available')).toBeTruthy()
+    expect(screen.getByText('Total jobs')).toBeTruthy()
+    expect(screen.getByText('8')).toBeTruthy()
+    expect(screen.getByText('Total engagements')).toBeTruthy()
+    expect(screen.getByText('5')).toBeTruthy()
     expect(screen.getByText('Readings current')).toBeTruthy()
     expect(screen.queryByText('Not connected')).toBeNull()
     expect(screen.queryByText(/^0$/)).toBeNull()
@@ -675,6 +681,19 @@ describe('AdminShell', () => {
     expect(await screen.findByText(/Payment and invoice lists are not connected/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Staff' }))
     expect(await screen.findByText(/operator commands/)).toBeTruthy()
+  })
+
+  it('shows unavailable marketplace totals instead of zero when the summary fails', async () => {
+    render(<AdminShell records={records({
+      async marketplaceSummary() {
+        return { ok: false, kind: 'unavailable' }
+      },
+    })} onSignOut={() => undefined} />)
+    const jobs = await screen.findByRole('button', { name: /Total jobs/ })
+    expect(jobs.textContent).toContain('Unavailable')
+    expect(jobs.textContent).not.toMatch(/\b0\b/)
+    const engagements = screen.getByRole('button', { name: /Total engagements/ })
+    expect(engagements.textContent).toContain('Unavailable')
   })
 
   it('keeps report filters mounted and drops a late response', async () => {

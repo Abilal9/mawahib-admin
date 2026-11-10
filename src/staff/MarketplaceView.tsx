@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type {
   MarketplaceQuery,
   MarketplaceTab,
@@ -65,7 +65,7 @@ export function MarketplaceList({
   }
   return (
     <div className="demo-list">
-      <div className="report-filters" role="tablist" aria-label="Marketplace records">
+      <div className="market-tabs" role="tablist" aria-label="Marketplace records">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -78,41 +78,28 @@ export function MarketplaceList({
           </button>
         ))}
       </div>
-      <form className="demo-filters" onSubmit={submit}>
-        <label htmlFor={searchId}>Search</label>
-        <input id={searchId} value={draft} onChange={(event) => setDraft(event.target.value)} />
-        <button type="submit">Search</button>
+      <form className="market-search" onSubmit={submit}>
+        <label htmlFor={searchId}>
+          Search
+          <input id={searchId} value={draft} onChange={(event) => setDraft(event.target.value)} />
+        </label>
+        <div className="actions">
+          <button type="submit">Search</button>
+          {draft.trim() || query.q.trim() ? (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setDraft('')
+                onChange({ ...query, q: '', cursor: null })
+              }}
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
       </form>
-      <ChipRow
-        label="Status"
-        options={STATUS[query.tab]}
-        selected={query.statuses}
-        onChange={(statuses) => onChange({ ...query, statuses, cursor: null })}
-      />
-      {query.tab === 'jobs' ? (
-        <ChipRow
-          label="Type"
-          options={EMPLOYMENT}
-          selected={query.employmentTypes}
-          onChange={(employmentTypes) => onChange({ ...query, employmentTypes, cursor: null })}
-        />
-      ) : null}
-      {query.tab === 'engagements' ? (
-        <ChipRow
-          label="Source"
-          options={SOURCES}
-          selected={query.sources}
-          onChange={(sources) => onChange({ ...query, sources, cursor: null })}
-        />
-      ) : null}
-      <label>
-        <input
-          type="checkbox"
-          checked={query.includeDeleted}
-          onChange={(event) => onChange({ ...query, includeDeleted: event.target.checked, cursor: null })}
-        />
-        Include deleted records
-      </label>
+      <MarketplaceFilters query={query} onChange={onChange} />
       {query.listingId ? <p>Limited to one job. <button type="button" onClick={() => onChange({ ...query, listingId: null, cursor: null })}>Clear</button></p> : null}
       {query.serviceOfferingId ? <p>Limited to one service. <button type="button" onClick={() => onChange({ ...query, serviceOfferingId: null, cursor: null })}>Clear</button></p> : null}
       <p>Total {labelTab(query.tab)}: {total === null ? 'Unavailable' : String(total)}</p>
@@ -170,24 +157,178 @@ export function MarketplaceDetail({
   return <p role="alert">That record is not available.</p>
 }
 
-function ChipRow({ label, options, selected, onChange }: { label: string; options: string[]; selected: string[]; onChange: (next: string[]) => void }) {
+function MarketplaceFilters({ query, onChange }: { query: MarketplaceQuery; onChange: (next: MarketplaceQuery) => void }) {
+  const [openMenu, setOpenMenu] = useState<'status' | 'employment' | 'source' | null>(null)
+  const statuses = STATUS[query.tab].map((id) => ({ id, label: labelWord(id) }))
+  const employment = EMPLOYMENT.map((id) => ({ id, label: labelWord(id) }))
+  const sources = SOURCES.map((id) => ({ id, label: labelWord(id) }))
+  function toggle(group: 'statuses' | 'employmentTypes' | 'sources', id: string) {
+    const current = query[group]
+    const next = current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    onChange({ ...query, [group]: next, cursor: null })
+  }
   return (
-    <div className="report-filters" role="group" aria-label={label}>
-      {options.map((option) => {
-        const on = selected.includes(option)
-        return (
-          <button
-            key={option}
-            type="button"
-            aria-pressed={on}
-            onClick={() => onChange(on ? selected.filter((item) => item !== option) : [...selected, option])}
-          >
-            {labelWord(option)}
+    <>
+      <div className="report-filter-bar market-toolbar">
+      <FilterMenu
+        label="Status"
+        summary={selectionSummary(query.statuses, statuses, 'All statuses', 'statuses')}
+        open={openMenu === 'status'}
+        onToggle={() => setOpenMenu(openMenu === 'status' ? null : 'status')}
+        onDone={() => setOpenMenu(null)}
+      >
+        {statuses.map((item) => (
+          <label key={item.id}>
+            <input type="checkbox" checked={query.statuses.includes(item.id)} onChange={() => toggle('statuses', item.id)} />
+            {item.label}
+          </label>
+        ))}
+      </FilterMenu>
+      {query.tab === 'jobs' ? (
+        <FilterMenu
+          label="Employment type"
+          summary={selectionSummary(query.employmentTypes, employment, 'All employment types', 'types')}
+          open={openMenu === 'employment'}
+          onToggle={() => setOpenMenu(openMenu === 'employment' ? null : 'employment')}
+          onDone={() => setOpenMenu(null)}
+        >
+          {employment.map((item) => (
+            <label key={item.id}>
+              <input type="checkbox" checked={query.employmentTypes.includes(item.id)} onChange={() => toggle('employmentTypes', item.id)} />
+              {item.label}
+            </label>
+          ))}
+        </FilterMenu>
+      ) : null}
+      {query.tab === 'engagements' ? (
+        <FilterMenu
+          label="Source"
+          summary={selectionSummary(query.sources, sources, 'All sources', 'sources')}
+          open={openMenu === 'source'}
+          onToggle={() => setOpenMenu(openMenu === 'source' ? null : 'source')}
+          onDone={() => setOpenMenu(null)}
+        >
+          {sources.map((item) => (
+            <label key={item.id}>
+              <input type="checkbox" checked={query.sources.includes(item.id)} onChange={() => toggle('sources', item.id)} />
+              {item.label}
+            </label>
+          ))}
+        </FilterMenu>
+      ) : null}
+      <label className="market-deleted">
+        <input
+          type="checkbox"
+          checked={query.includeDeleted}
+          onChange={(event) => onChange({ ...query, includeDeleted: event.target.checked, cursor: null })}
+        />
+        Include deleted records
+      </label>
+      <button
+        type="button"
+        className="report-clear"
+        onClick={() => onChange({
+          ...query,
+          statuses: [],
+          employmentTypes: [],
+          sources: [],
+          includeDeleted: false,
+          listingId: null,
+          serviceOfferingId: null,
+          cursor: null,
+        })}
+      >
+        Clear filters
+      </button>
+    </div>
+    <div className="report-chips">
+        {query.statuses.map((status) => (
+          <button key={status} type="button" className="report-chip" onClick={() => toggle('statuses', status)}>
+            {labelWord(status)} <span aria-hidden="true">×</span><span className="sr-only">Remove status filter</span>
           </button>
-        )
-      })}
+        ))}
+        {query.employmentTypes.map((type) => (
+          <button key={type} type="button" className="report-chip" onClick={() => toggle('employmentTypes', type)}>
+            {labelWord(type)} <span aria-hidden="true">×</span><span className="sr-only">Remove employment type filter</span>
+          </button>
+        ))}
+        {query.sources.map((source) => (
+          <button key={source} type="button" className="report-chip" onClick={() => toggle('sources', source)}>
+            {labelWord(source)} <span aria-hidden="true">×</span><span className="sr-only">Remove source filter</span>
+          </button>
+        ))}
+      </div>
+    </>
+  )
+}
+
+function FilterMenu({
+  label,
+  summary,
+  open,
+  onToggle,
+  onDone,
+  children,
+}: {
+  label: string
+  summary: string
+  open: boolean
+  onToggle: () => void
+  onDone: () => void
+  children: ReactNode
+}) {
+  const rootRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelId = useId()
+  useEffect(() => {
+    if (!open) return
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      onDone()
+      triggerRef.current?.focus()
+    }
+    function onPointer(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) onDone()
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('pointerdown', onPointer)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('pointerdown', onPointer)
+    }
+  }, [open, onDone])
+  return (
+    <div className="report-menu" ref={rootRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="report-filter-trigger"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={onToggle}
+      >
+        <span>{summary}</span>
+        <span className="report-chevron" aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className="report-menu-panel" id={panelId}>
+          <div className="report-menu-options" role="group" aria-label={label}>
+            {children}
+          </div>
+          <div className="report-menu-footer">
+            <button type="button" className="secondary" onClick={() => { onDone(); triggerRef.current?.focus() }}>Done</button>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
+}
+
+function selectionSummary(selected: string[], options: Array<{ id: string; label: string }>, allLabel: string, plural: string): string {
+  if (selected.length === 0) return allLabel
+  if (selected.length === 1) return options.find((item) => item.id === selected[0])?.label ?? allLabel
+  return `${selected.length} ${plural}`
 }
 
 function MarketplaceRow({
@@ -325,5 +466,6 @@ function labelTab(tab: MarketplaceTab): string {
 }
 
 function labelWord(value: string): string {
-  return value.replaceAll('_', ' ')
+  const text = value.replaceAll('_', ' ')
+  return text.charAt(0).toUpperCase() + text.slice(1)
 }

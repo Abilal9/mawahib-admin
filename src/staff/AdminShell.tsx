@@ -11,7 +11,7 @@ type PlaceholderSection = 'marketplace' | 'payments' | 'staff'
 
 type View =
   | { name: 'loading' }
-  | { name: 'overview'; overview: OperationsOverview | null; userTotal: number | null; reportTotals: ReportTotals | null }
+  | { name: 'overview'; overview: OperationsOverview | null; userTotal: number | null; reportTotals: ReportTotals | null; jobTotal: number | null; engagementTotal: number | null; totalsPhase: 'loading' | 'ready' }
   | { name: 'users'; query: string; items: StaffUserSummary[]; nextCursor: string | null; totalUsers: number; matchCount: number }
   | { name: 'user'; user: StaffUserDetail }
   | { name: 'disputes'; items: StaffDispute[]; nextCursor: string | null }
@@ -81,6 +81,16 @@ export function AdminShell({
         returnTo: route.returnTo,
         record: null,
         phase: 'loading',
+      })
+    } else if (route.name === 'home') {
+      setView({
+        name: 'overview',
+        overview: null,
+        userTotal: null,
+        reportTotals: null,
+        jobTotal: null,
+        engagementTotal: null,
+        totalsPhase: 'loading',
       })
     } else {
       setView({ name: 'loading' })
@@ -152,7 +162,7 @@ export function AdminShell({
         show={route.name === 'users'}
       />
       {view.name === 'loading' ? <LoadingIndicator label="Loading records" /> : null}
-      {view.name === 'overview' ? <Overview overview={view.overview} userTotal={view.userTotal} reportTotals={view.reportTotals} onOpen={open} onRefresh={() => setReload((value) => value + 1)} /> : null}
+      {view.name === 'overview' ? <Overview overview={view.overview} userTotal={view.userTotal} reportTotals={view.reportTotals} jobTotal={view.jobTotal} engagementTotal={view.engagementTotal} totalsPhase={view.totalsPhase} onOpen={open} onRefresh={() => setReload((value) => value + 1)} /> : null}
       {view.name === 'denied' ? <p role="alert">Staff access is not active for this account. Contact your administrator.</p> : null}
       {view.name === 'expired' ? <p role="alert">Your session has expired. Sign in again.</p> : null}
       {view.name === 'unavailable' ? <p role="alert">The staff service is temporarily unavailable. Try again.</p> : null}
@@ -303,31 +313,45 @@ function titleFor(route: AdminRoute, view: View): string {
   return 'Staff'
 }
 
-function Overview({ overview, userTotal, reportTotals, onOpen, onRefresh }: { overview: OperationsOverview | null; userTotal: number | null; reportTotals: ReportTotals | null; onOpen: (route: AdminRoute) => void; onRefresh: () => void }) {
+function Overview({ overview, userTotal, reportTotals, jobTotal, engagementTotal, totalsPhase, onOpen, onRefresh }: { overview: OperationsOverview | null; userTotal: number | null; reportTotals: ReportTotals | null; jobTotal: number | null; engagementTotal: number | null; totalsPhase: 'loading' | 'ready'; onOpen: (route: AdminRoute) => void; onRefresh: () => void }) {
   const monitoring = monitoringHeadline(overview)
+  const value = (phase: 'loading' | 'ready', number: number | null) => {
+    if (phase === 'loading') return <span className="metric-skeleton" aria-label="Loading" />
+    return number === null ? 'Unavailable' : String(number)
+  }
   return (
     <>
-      <p className="section-note">Total users counts application accounts that are not deleted, including suspended accounts. Other sections omit a total when one is not available.</p>
-      <div className="demo-metrics">
+      <p className="section-note">Total users counts application accounts that are not deleted, including suspended accounts. Job and engagement totals include every status and exclude deleted records. Other sections omit a total when one is not available.</p>
+      <div className="demo-metrics overview-metrics">
         <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'users', query: '', cursor: null })}>
           <span className="metric-title">Total users</span>
-          <span className="metric-value">{userTotal === null ? 'Unavailable' : String(userTotal)}</span>
+          <span className="metric-value">{totalsPhase === 'loading' ? <span className="metric-skeleton" aria-label="Loading" /> : userTotal === null ? 'Unavailable' : String(userTotal)}</span>
           <span className="metric-detail">Active and suspended accounts</span>
         </button>
         <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'reports', statuses: ['open'], targetTypes: [], exactTarget: null, cursor: null })}>
           <span className="metric-title">Open reports</span>
-          <span className="metric-value">{reportTotals === null ? 'Unavailable' : String(reportTotals.openReports)}</span>
+          <span className="metric-value">{totalsPhase === 'loading' ? <span className="metric-skeleton" aria-label="Loading" /> : reportTotals === null ? 'Unavailable' : String(reportTotals.openReports)}</span>
           <span className="metric-detail">{reportTotals === null ? 'Total not available' : `${reportTotals.totalReports} total reports`}</span>
         </button>
         <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'disputes', cursor: null })}>
           <span className="metric-title">Disputes</span>
-          <span className="metric-value">View open disputes</span>
+          <span className="metric-value">{totalsPhase === 'loading' ? <span className="metric-skeleton" aria-label="Loading" /> : 'View open disputes'}</span>
           <span className="metric-detail">Total not available</span>
         </button>
         <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'operations' })}>
           <span className="metric-title">Monitoring</span>
-          <span className="metric-value">{monitoring.value}</span>
+          <span className="metric-value">{totalsPhase === 'loading' ? <span className="metric-skeleton" aria-label="Loading" /> : monitoring.value}</span>
           <span className="metric-detail">{monitoring.detail}</span>
+        </button>
+        <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'marketplace', ...EMPTY_MARKETPLACE, tab: 'jobs' })}>
+          <span className="metric-title">Total jobs</span>
+          <span className="metric-value">{value(totalsPhase, jobTotal)}</span>
+          <span className="metric-detail">All statuses · Excludes deleted</span>
+        </button>
+        <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'marketplace', ...EMPTY_MARKETPLACE, tab: 'engagements' })}>
+          <span className="metric-title">Total engagements</span>
+          <span className="metric-value">{value(totalsPhase, engagementTotal)}</span>
+          <span className="metric-detail">All statuses · Excludes deleted</span>
         </button>
       </div>
       {overview ? <OperationsView overview={overview} embedded onRefresh={onRefresh} /> : <p>Monitoring readings are not available right now.</p>}
@@ -637,10 +661,11 @@ async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
     return { name: 'placeholder', section: route.name }
   }
   if (route.name === 'home') {
-    const [operationsResult, usersResult, reportsResult] = await Promise.all([
+    const [operationsResult, usersResult, reportsResult, marketplaceResult] = await Promise.all([
       records.operations(),
       records.searchUsers('', null),
       records.reportSummary(),
+      records.marketplaceSummary(),
     ])
     if (!operationsResult.ok && (operationsResult.kind === 'denied' || operationsResult.kind === 'expired')) {
       return failure(operationsResult.kind)
@@ -656,6 +681,9 @@ async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
       overview: operationsResult.ok ? operationsResult.data : null,
       userTotal: usersResult.ok ? usersResult.data.totalUsers : null,
       reportTotals: reportsResult.ok ? reportsResult.data : null,
+      jobTotal: marketplaceResult.ok ? marketplaceResult.data.totalJobs : null,
+      engagementTotal: marketplaceResult.ok ? marketplaceResult.data.totalEngagements : null,
+      totalsPhase: 'ready',
     }
   }
   if (route.name === 'users') {

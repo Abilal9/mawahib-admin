@@ -158,6 +158,7 @@ export type AdminRecords = {
     id: string,
     input: { hidden: boolean; expectedVersion: number; reason: string },
   ): Promise<AdminResult<{ outcome: 'changed' | 'unchanged'; hidden: boolean; hiddenAt: string | null; version: number }>>
+  marketplaceSummary(): Promise<AdminResult<{ totalJobs: number; totalEngagements: number }>>
   jobs(query: MarketplaceQuery): Promise<AdminResult<MarketplacePage<StaffJobListItem>>>
   job(id: string): Promise<AdminResult<StaffJobDetail>>
   services(query: MarketplaceQuery): Promise<AdminResult<MarketplacePage<StaffServiceListItem>>>
