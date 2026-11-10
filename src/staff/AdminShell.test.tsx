@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AdminShell } from './AdminShell'
-import type { AdminRecords, OperationsOverview, StaffDispute, StaffUserSummary } from './adminTypes'
+import { EMPTY_MARKETPLACE, type AdminRecords, type OperationsOverview, type StaffDispute, type StaffUserSummary } from './adminTypes'
 import { OPERATIONS_POLL_MS } from './OperationsView'
 
 const user: StaffUserSummary = {
@@ -684,6 +684,27 @@ describe('AdminShell', () => {
     expect(await screen.findByText(/Payment and invoice lists are not connected/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Staff' }))
     expect(await screen.findByText(/operator commands/)).toBeTruthy()
+  })
+
+  it('opens the selected marketplace tab', async () => {
+    render(
+      <AdminShell
+        records={records()}
+        initialRoute={{ name: 'marketplace', ...EMPTY_MARKETPLACE }}
+        onSignOut={() => undefined}
+      />,
+    )
+    expect(await screen.findByRole('tab', { name: 'Jobs' })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: 'Jobs' }).getAttribute('aria-selected')).toBe('true')
+    fireEvent.click(screen.getByRole('tab', { name: 'Engagements' }))
+    expect(screen.getByRole('tab', { name: 'Engagements' }).getAttribute('aria-selected')).toBe('true')
+    expect(await screen.findByText('No engagements match these filters.')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Marketplace' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Overview' })).toBeNull()
+    fireEvent.click(screen.getByRole('tab', { name: 'Services' }))
+    expect(screen.getByRole('tab', { name: 'Services' }).getAttribute('aria-selected')).toBe('true')
+    expect(await screen.findByText('No services match these filters.')).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Overview' })).toBeNull()
   })
 
   it('shows unavailable marketplace totals instead of zero when the summary fails', async () => {

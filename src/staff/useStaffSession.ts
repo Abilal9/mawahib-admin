@@ -47,7 +47,11 @@ export function useStaffSession(auth: StaffAuthClient, access: StaffAccessClient
       commit({ name: 'signed-out', error: sessionExpired, busy: false })
       return
     }
-    commit({ name: 'checking' })
+    // Returning to this tab asks Supabase to recover the session. That emits
+    // signed-in or token-refreshed for the same account. Leaving `accepted`
+    // for `checking` unmounts the open page and mounts Overview again.
+    const keepScreen = phaseRef.current === 'accepted' && session.userId === userIdRef.current
+    if (!keepScreen) commit({ name: 'checking' })
     const result = await accessRef.current.check(session.accessToken)
     if (!isCurrent(epoch)) return
     const latest = await authRef.current.getSession()
@@ -55,7 +59,7 @@ export function useStaffSession(auth: StaffAuthClient, access: StaffAccessClient
 
     if (result.ok) {
       clearDraft()
-      commit({ name: 'accepted', role: result.role })
+      if (!keepScreen) commit({ name: 'accepted', role: result.role })
       return
     }
     if (result.kind === 'denied') {
@@ -162,7 +166,10 @@ export function useStaffSession(auth: StaffAuthClient, access: StaffAccessClient
     void resolve(epoch)
     const stop = auth.onAuthStateChange((event: StaffAuthEvent, session) => {
       if (event === 'initial') return
-      if (event === 'token-refreshed' || (session.userId && session.userId === userIdRef.current && (event === 'signed-in' || event === 'user-updated'))) {
+      const sameAccount = Boolean(session.userId) && session.userId === userIdRef.current
+      const refreshForAnotherAccount = event === 'token-refreshed' && Boolean(session.userId) && !sameAccount
+      // Another account's refresh falls through and clears the open record.
+      if (!refreshForAnotherAccount && (event === 'token-refreshed' || (sameAccount && (event === 'signed-in' || event === 'user-updated')))) {
         const phase = phaseRef.current
         if (phase === 'accepted' || phase === 'checking' || phase === 'denied' || phase === 'unavailable') {
           const nextEpoch = ++epochRef.current

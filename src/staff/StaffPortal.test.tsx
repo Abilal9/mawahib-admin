@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { StaffPortal } from './StaffPortal'
+import { EMPTY_MARKETPLACE, type AdminRecords, type StaffEngagementDetail } from './adminTypes'
 import type { AuthFactor, StaffAccessResult, StaffAuthClient, StaffAuthEvent } from './types'
 
 type Deferred<T> = {
@@ -173,6 +174,91 @@ async function signIn(harness: ReturnType<typeof createHarness>, email = 'staff@
   fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'correct-password' } })
   fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
   return harness
+}
+
+function engagementDetail(): StaffEngagementDetail {
+  return {
+    id: '44444444-4444-4444-8444-444444444444',
+    title: 'Poster design',
+    status: 'completed',
+    source: 'listing_application',
+    client: { id: '11111111-1111-4111-8111-111111111111', displayName: 'Ada Preview', deleted: false },
+    provider: { id: '55555555-5555-4555-8555-555555555555', displayName: 'Nour Preview', deleted: false },
+    listingId: null,
+    applicationId: null,
+    serviceOfferingId: null,
+    payment: { amount: '150.00', currency: 'SAR', status: 'succeeded', simulated: true },
+    createdAt: '2026-02-01T00:00:00.000Z',
+    updatedAt: '2026-02-02T00:00:00.000Z',
+    completedAt: '2026-02-02T00:00:00.000Z',
+    deletedAt: null,
+    dueAt: null,
+    reviewWindowClosesAt: null,
+    listing: null,
+    serviceOffering: null,
+    disputeLink: null,
+    payments: [{
+      id: '66666666-6666-4666-8666-666666666666',
+      amount: '150.00',
+      currency: 'SAR',
+      status: 'succeeded',
+      simulated: true,
+      createdAt: '2026-02-02T00:00:00.000Z',
+      invoice: {
+        id: '77777777-7777-4777-8777-777777777777',
+        invoiceNumber: 'MWH-2026-000001',
+        issuedAt: '2026-02-02T00:00:00.000Z',
+        amount: '150.00',
+        currency: 'SAR',
+        status: 'generated',
+        simulated: true,
+        hasDocument: true,
+      },
+    }],
+  }
+}
+
+function detailRecords(engagement: StaffEngagementDetail): AdminRecords {
+  const page = { items: [], nextCursor: null, total: 0, matchCount: 0 }
+  return {
+    async searchUsers() {
+      return { ok: true, data: { items: [], nextCursor: null, totalUsers: 0, matchCount: 0 } }
+    },
+    async operations() {
+      return { ok: true, data: { generatedAt: '2026-02-02T00:00:00.000Z', cards: [] } }
+    },
+    async reportSummary() {
+      return { ok: true, data: { openReports: 0, totalReports: 0 } }
+    },
+    async marketplaceSummary() {
+      return { ok: true, data: { totalJobs: 0, totalEngagements: 1 } }
+    },
+    async jobs() {
+      return { ok: true, data: page }
+    },
+    async services() {
+      return { ok: true, data: page }
+    },
+    async applications() {
+      return { ok: true, data: page }
+    },
+    async engagements() {
+      return { ok: true, data: { items: [engagement], nextCursor: null, total: 1, matchCount: 1 } }
+    },
+    async engagement() {
+      return { ok: true, data: engagement }
+    },
+    async invoiceDocument() {
+      return {
+        ok: true,
+        data: {
+          url: 'https://files.example.test/invoice.pdf',
+          originalFileName: 'Mawahib-Invoice-MWH-2026-000001.pdf',
+          mimeType: 'application/pdf',
+        },
+      }
+    },
+  } as unknown as AdminRecords
 }
 
 afterEach(() => {
@@ -627,6 +713,157 @@ describe('StaffPortal', () => {
     render(<StaffPortal auth={harness.auth} access={harness.access} />)
     expect(await screen.findByText('The authenticator service is temporarily unavailable. Try again.')).toBeTruthy()
     expect(harness.checks).toEqual([])
+  })
+
+  it('keeps an engagement detail open after a successful session recheck', async () => {
+    const harness = createHarness({
+      accessToken: 'token-1',
+      userId: 'user-1',
+      level: 'aal2',
+      factors: [{ id: 'totp-1', factorType: 'totp', status: 'verified' }],
+    })
+    harness.setAccessResults([{ ok: true, role: 'operator' }])
+    const engagement = engagementDetail()
+    render(
+      <StaffPortal
+        auth={harness.auth}
+        access={harness.access}
+        records={detailRecords(engagement)}
+        initialRoute={{
+          name: 'marketplace-detail',
+          tab: 'engagements',
+          id: engagement.id,
+          returnTo: { ...EMPTY_MARKETPLACE, tab: 'engagements' },
+        }}
+      />,
+    )
+    expect(await screen.findByRole('heading', { name: 'Marketplace' })).toBeTruthy()
+    expect(await screen.findByText('Invoice MWH-2026-000001')).toBeTruthy()
+
+    harness.replaceSession({
+      accessToken: 'token-2',
+      userId: 'user-1',
+      level: 'aal2',
+      factors: [{ id: 'totp-1', factorType: 'totp', status: 'verified' }],
+    })
+    harness.emit('signed-in')
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(screen.queryByRole('heading', { name: 'Checking staff access' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Overview' })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Marketplace' })).toBeTruthy()
+    expect(screen.getByText('Invoice MWH-2026-000001')).toBeTruthy()
+    expect(harness.checks).toEqual(['token-1', 'token-2'])
+
+    await act(async () => {
+      harness.releaseCheck({ ok: true, role: 'operator' })
+    })
+    harness.replaceSession({
+      accessToken: 'token-3',
+      userId: 'user-1',
+      level: 'aal2',
+      factors: [{ id: 'totp-1', factorType: 'totp', status: 'verified' }],
+    })
+    harness.emit('token-refreshed')
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(screen.getByText('Invoice MWH-2026-000001')).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Overview' })).toBeNull()
+    await act(async () => {
+      harness.releaseCheck({ ok: true, role: 'operator' })
+    })
+    expect(screen.getByRole('heading', { name: 'Marketplace' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'View invoice' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Overview' })).toBeNull()
+    expect(harness.checks).toEqual(['token-1', 'token-2', 'token-3'])
+    expect(sessionStorage.length).toBe(0)
+
+    const opened: Array<{ target: string; rel: string }> = []
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      opened.push({ target: this.target, rel: this.rel })
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'View invoice' }))
+    await waitFor(() => expect(opened).toEqual([{ target: '_blank', rel: 'noopener noreferrer' }]))
+    click.mockRestore()
+    expect(screen.getByRole('heading', { name: 'Marketplace' })).toBeTruthy()
+  })
+
+  it('clears an open engagement when a session recheck is denied', async () => {
+    const harness = createHarness({
+      accessToken: 'token-1',
+      userId: 'user-1',
+      level: 'aal2',
+      factors: [{ id: 'totp-1', factorType: 'totp', status: 'verified' }],
+    })
+    harness.setAccessResults([
+      { ok: true, role: 'operator' },
+      { ok: false, kind: 'denied' },
+    ])
+    const engagement = engagementDetail()
+    render(
+      <StaffPortal
+        auth={harness.auth}
+        access={harness.access}
+        records={detailRecords(engagement)}
+        initialRoute={{
+          name: 'marketplace-detail',
+          tab: 'engagements',
+          id: engagement.id,
+          returnTo: { ...EMPTY_MARKETPLACE, tab: 'engagements' },
+        }}
+      />,
+    )
+    expect(await screen.findByText('Invoice MWH-2026-000001')).toBeTruthy()
+    harness.replaceSession({
+      accessToken: 'token-2',
+      userId: 'user-1',
+      level: 'aal2',
+      factors: [{ id: 'totp-1', factorType: 'totp', status: 'verified' }],
+    })
+    harness.emit('token-refreshed')
+    expect(await screen.findByText('Staff access is not active for this account. Contact your administrator.')).toBeTruthy()
+    expect(screen.queryByText('Invoice MWH-2026-000001')).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Overview' })).toBeNull()
+  })
+
+  it('clears an open engagement when a refreshed token belongs to another account', async () => {
+    const harness = createHarness({
+      accessToken: 'token-1',
+      userId: 'user-1',
+      level: 'aal2',
+      factors: [{ id: 'totp-1', factorType: 'totp', status: 'verified' }],
+    })
+    harness.setAccessResults([{ ok: true, role: 'operator' }])
+    const engagement = engagementDetail()
+    render(<StaffPortal auth={harness.auth} access={harness.access} records={detailRecords(engagement)} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Total engagements/ }))
+    expect(await screen.findByText('Poster design')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'View' }))
+    expect(await screen.findByText('Invoice MWH-2026-000001')).toBeTruthy()
+    harness.replaceSession({
+      accessToken: 'token-b',
+      userId: 'user-b',
+      level: 'aal2',
+      factors: [{ id: 'totp-b', factorType: 'totp', status: 'verified' }],
+    })
+    harness.emit('token-refreshed')
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(screen.queryByText('Invoice MWH-2026-000001')).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Marketplace' })).toBeNull()
+    await act(async () => {
+      harness.releaseCheck({ ok: true, role: 'operator' })
+    })
+    expect(await screen.findByRole('heading', { name: 'Overview' })).toBeTruthy()
+    expect(screen.queryByText('Invoice MWH-2026-000001')).toBeNull()
+    expect(screen.queryByText('Poster design')).toBeNull()
+    expect(harness.checks).toEqual(['token-1', 'token-b'])
   })
 
   it('stops for an unexpected authenticator configuration', async () => {
