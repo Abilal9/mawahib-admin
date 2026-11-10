@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
-import type { AccountActionRecord, AdminRecords, AdminResult, AdminRoute, OperationsOverview, ReportListQuery, ReportTotals, StaffDispute, StaffReportDetail, StaffReportSummary, StaffUserDetail, StaffUserSummary } from './adminTypes'
+import type { AccountActionRecord, AdminRecords, AdminResult, AdminRoute, DisputeCaseDetail, DisputeCaseListItem, DisputeCaseQuery, OperationsOverview, ReportListQuery, ReportTotals, StaffReportDetail, StaffReportSummary, StaffUserDetail, StaffUserSummary } from './adminTypes'
+import { DisputeCaseDetailView, DisputeCaseList } from './DisputesView'
+import { EMPTY_DISPUTES } from './adminTypes'
 import { OPERATIONS_POLL_MS, OperationsView } from './OperationsView'
 import { ReportDetail, ReportsList } from './ReportsView'
 import { ButtonSpinner, LoadingIndicator } from './LoadingIndicator'
@@ -11,11 +13,11 @@ type PlaceholderSection = 'marketplace' | 'payments' | 'staff'
 
 type View =
   | { name: 'loading' }
-  | { name: 'overview'; overview: OperationsOverview | null; userTotal: number | null; reportTotals: ReportTotals | null; jobTotal: number | null; engagementTotal: number | null; totalsPhase: 'loading' | 'ready' }
+  | { name: 'overview'; overview: OperationsOverview | null; userTotal: number | null; reportTotals: ReportTotals | null; jobTotal: number | null; engagementTotal: number | null; openCases: number | null; disputedEngagements: number | null; totalsPhase: 'loading' | 'ready' }
   | { name: 'users'; query: string; items: StaffUserSummary[]; nextCursor: string | null; totalUsers: number; matchCount: number }
   | { name: 'user'; user: StaffUserDetail }
-  | { name: 'disputes'; items: StaffDispute[]; nextCursor: string | null }
-  | { name: 'dispute'; dispute: StaffDispute }
+  | { name: 'disputes'; query: DisputeCaseQuery; items: DisputeCaseListItem[]; nextCursor: string | null; total: number | null; matchCount: number | null; phase: 'loading' | 'ready' | 'unavailable' | 'denied' | 'expired' }
+  | { name: 'dispute'; id: string; returnTo: DisputeCaseQuery; record: DisputeCaseDetail | null; phase: 'loading' | 'ready' | 'unavailable' | 'denied' | 'expired' | 'missing' | 'conflict'; notice: string | null }
   | { name: 'operations'; overview: OperationsOverview }
   | { name: 'reports'; statuses: ReportListQuery['statuses']; targetTypes: ReportListQuery['targetTypes']; exactTarget: ReportListQuery['exactTarget']; items: StaffReportSummary[]; nextCursor: string | null; matchCount: number | null; phase: 'loading' | 'ready' | 'unavailable' | 'denied' | 'expired' }
   | { name: 'report'; report: StaffReportDetail; returnTo: ReportListQuery }
@@ -45,6 +47,7 @@ export function AdminShell({
 }) {
   const [route, setRoute] = useState<AdminRoute>(initialRoute)
   const [view, setView] = useState<View>({ name: 'loading' })
+  const [assignees, setAssignees] = useState<Array<{ staffMemberId: string; label: string; isSelf: boolean; conflicted: boolean }>>([])
   const [query, setQuery] = useState(initialRoute.name === 'users' ? initialRoute.query : '')
   const [reload, setReload] = useState(0)
   const requestId = useRef(0)
@@ -90,8 +93,22 @@ export function AdminShell({
         reportTotals: null,
         jobTotal: null,
         engagementTotal: null,
+        openCases: null,
+        disputedEngagements: null,
         totalsPhase: 'loading',
       })
+    } else if (route.name === 'disputes') {
+      setView({
+        name: 'disputes',
+        query: { q: route.q, statuses: route.statuses, assignment: route.assignment, engagementState: route.engagementState, cursor: route.cursor },
+        items: [],
+        nextCursor: null,
+        total: null,
+        matchCount: null,
+        phase: 'loading',
+      })
+    } else if (route.name === 'dispute') {
+      setView({ name: 'dispute', id: route.id, returnTo: route.returnTo, record: null, phase: 'loading', notice: null })
     } else {
       setView({ name: 'loading' })
     }
@@ -102,13 +119,26 @@ export function AdminShell({
         return
       }
       if (next.name === 'reports' && (next.phase === 'denied' || next.phase === 'expired') && onAccessDenied) onAccessDenied()
-      if ((next.name === 'marketplace' || next.name === 'marketplace-detail') && (next.phase === 'denied' || next.phase === 'expired') && onAccessDenied) onAccessDenied()
+      if ((next.name === 'marketplace' || next.name === 'marketplace-detail' || next.name === 'disputes' || next.name === 'dispute') && (next.phase === 'denied' || next.phase === 'expired') && onAccessDenied) onAccessDenied()
       setView(next)
     })
     return () => {
       requestId.current += 1
     }
   }, [onAccessDenied, records, route, reload])
+
+  useEffect(() => {
+    if (route.name !== 'dispute') return
+    let current = true
+    void records.disputeCaseAssignees(route.id).then((result) => {
+      if (current && result.ok) {
+        setAssignees(result.data.items.map((item) => ({ ...item, conflicted: item.conflicted === true })))
+      }
+    })
+    return () => {
+      current = false
+    }
+  }, [records, route])
 
   useEffect(() => {
     if (route.name !== 'operations' && route.name !== 'home') return
@@ -128,6 +158,41 @@ export function AdminShell({
 
   function open(next: AdminRoute) {
     setRoute(next)
+  }
+
+  async function actDispute(record: DisputeCaseDetail | null, action: 'start_review' | 'close' | 'reopen', note: string, key: string, outcome?: DisputeCaseDetail['case']['closedOutcome']) {
+    if (!record) return 'conflict' as const
+    const result = await records.setDisputeCaseStatus(record.case.id, {
+      action,
+      expectedRevision: record.case.revision,
+      note,
+      ...(action === 'close' && outcome ? { outcome } : {}),
+      idempotencyKey: key,
+    })
+    if (!result.ok) return result.kind === 'uncertain' ? 'uncertain' as const : 'conflict' as const
+    setReload((value) => value + 1)
+    return 'ok' as const
+  }
+
+  async function actAssignment(record: DisputeCaseDetail | null, assigneeStaffMemberId: string | null, note: string, key: string) {
+    if (!record) return 'conflict' as const
+    const result = await records.setDisputeCaseAssignment(record.case.id, {
+      assigneeStaffMemberId,
+      expectedRevision: record.case.revision,
+      note,
+      idempotencyKey: key,
+    })
+    if (!result.ok) return result.kind === 'uncertain' ? 'uncertain' as const : 'conflict' as const
+    setReload((value) => value + 1)
+    return 'ok' as const
+  }
+
+  async function actNote(record: DisputeCaseDetail | null, body: string, key: string) {
+    if (!record) return 'conflict' as const
+    const result = await records.addDisputeCaseNote(record.case.id, { body, idempotencyKey: key })
+    if (!result.ok) return result.kind === 'uncertain' ? 'uncertain' as const : 'conflict' as const
+    setReload((value) => value + 1)
+    return 'ok' as const
   }
 
   function navigate(section: PortalSection) {
@@ -162,7 +227,7 @@ export function AdminShell({
         show={route.name === 'users'}
       />
       {view.name === 'loading' ? <LoadingIndicator label="Loading records" /> : null}
-      {view.name === 'overview' ? <Overview overview={view.overview} userTotal={view.userTotal} reportTotals={view.reportTotals} jobTotal={view.jobTotal} engagementTotal={view.engagementTotal} totalsPhase={view.totalsPhase} onOpen={open} onRefresh={() => setReload((value) => value + 1)} /> : null}
+      {view.name === 'overview' ? <Overview overview={view.overview} userTotal={view.userTotal} reportTotals={view.reportTotals} jobTotal={view.jobTotal} engagementTotal={view.engagementTotal} openCases={view.openCases} disputedEngagements={view.disputedEngagements} totalsPhase={view.totalsPhase} onOpen={open} onRefresh={() => setReload((value) => value + 1)} /> : null}
       {view.name === 'denied' ? <p role="alert">Staff access is not active for this account. Contact your administrator.</p> : null}
       {view.name === 'expired' ? <p role="alert">Your session has expired. Sign in again.</p> : null}
       {view.name === 'unavailable' ? <p role="alert">The staff service is temporarily unavailable. Try again.</p> : null}
@@ -193,22 +258,37 @@ export function AdminShell({
         <UserDetail user={view.user} records={records} onAccessDenied={onAccessDenied} initialNotice={initialNotice} startConfirming={startConfirming} />
       ) : null}
       {view.name === 'disputes' ? (
-        <div className="demo-list">
-          {view.items.map((dispute) => (
-            <article key={dispute.id} className="demo-row">
-              <div>
-                <p><strong>{dispute.title}</strong></p>
-                <p>{dispute.clientDisplayName ?? 'Name unavailable'} and {dispute.providerDisplayName ?? 'Name unavailable'}</p>
-                <p>{dispute.disputeNote ?? 'No dispute note is recorded.'}</p>
-                <PaymentLine payment={dispute.payment} />
-              </div>
-              <button type="button" className="text-action" onClick={() => open({ name: 'dispute', id: dispute.id })}>View dispute</button>
-            </article>
-          ))}
-          {view.nextCursor ? <button type="button" onClick={() => open({ name: 'disputes', cursor: view.nextCursor })}>Next</button> : null}
-        </div>
+        <DisputeCaseList
+          query={view.query}
+          items={view.items}
+          nextCursor={view.nextCursor}
+          total={view.total}
+          matchCount={view.matchCount}
+          phase={view.phase}
+          onChange={(next) => open({ name: 'disputes', ...next })}
+          onOpen={(id) => open({ name: 'dispute', id, returnTo: { ...view.query, cursor: route.name === 'disputes' ? route.cursor : null } })}
+          onOpenUser={(id) => open({ name: 'user', id })}
+        />
       ) : null}
-      {view.name === 'dispute' ? <DisputeDetail dispute={view.dispute} /> : null}
+      {view.name === 'dispute' ? (
+        <DisputeCaseDetailView
+          record={view.record}
+          phase={view.phase}
+          notice={view.notice}
+          onOpenUser={(id) => open({ name: 'user', id })}
+          onViewInvoice={async (id) => {
+            const result = await records.invoiceDocument(id)
+            return result.ok ? { url: result.data.url, originalFileName: result.data.originalFileName } : null
+          }}
+          onStartReview={(note, key) => actDispute(view.record, 'start_review', note, key)}
+          onClose={(outcome, note, key) => actDispute(view.record, 'close', note, key, outcome)}
+          onReopen={(note, key) => actDispute(view.record, 'reopen', note, key)}
+          onAssign={(staffMemberId, note, key) => actAssignment(view.record, staffMemberId, note, key)}
+          onUnassign={(note, key) => actAssignment(view.record, null, note, key)}
+          onNote={(body, key) => actNote(view.record, body, key)}
+          assignees={assignees}
+        />
+      ) : null}
       {view.name === 'operations' ? <OperationsView overview={view.overview} embedded onRefresh={() => setReload((value) => value + 1)} /> : null}
       {view.name === 'reports' ? (
         <ReportsList
@@ -252,7 +332,7 @@ export function AdminShell({
           onOpenEngagement={(id) => open({ name: 'marketplace-detail', tab: 'engagements', id, returnTo: view.returnTo })}
           onOpenApplications={(listingId) => open({ name: 'marketplace', ...EMPTY_MARKETPLACE, tab: 'applications', listingId })}
           onOpenEngagements={(filter) => open({ name: 'marketplace', ...EMPTY_MARKETPLACE, tab: 'engagements', listingId: filter.listingId ?? null, serviceOfferingId: filter.serviceOfferingId ?? null })}
-          onOpenDispute={(id) => open({ name: 'dispute', id })}
+          onOpenDispute={(id) => open({ name: 'dispute', id, returnTo: EMPTY_DISPUTES })}
           onViewInvoice={async (id) => {
             const result = await records.invoiceDocument(id)
             return result.ok ? { url: result.data.url, originalFileName: result.data.originalFileName } : null
@@ -281,7 +361,7 @@ export function AdminShell({
 function navigateSection(section: PortalSection): AdminRoute {
   if (section === 'overview') return { name: 'home' }
   if (section === 'users') return { name: 'users', query: '', cursor: null }
-  if (section === 'disputes') return { name: 'disputes', cursor: null }
+  if (section === 'disputes') return { name: 'disputes', ...EMPTY_DISPUTES }
   if (section === 'operations') return { name: 'operations' }
   if (section === 'reports') return { name: 'reports', statuses: ['open'], targetTypes: [], exactTarget: null, cursor: null }
   if (section === 'marketplace') return { name: 'marketplace', ...EMPTY_MARKETPLACE }
@@ -304,7 +384,6 @@ function titleFor(route: AdminRoute, view: View): string {
   if (view.name === 'unavailable') return 'Staff service unavailable'
   if (view.name === 'missing') return 'Record unavailable'
   if (view.name === 'user') return view.user.displayName
-  if (view.name === 'dispute') return view.dispute.title
   if (route.name === 'home') return 'Overview'
   if (route.name === 'users') return 'Users'
   if (route.name === 'user') return 'Account'
@@ -317,7 +396,7 @@ function titleFor(route: AdminRoute, view: View): string {
   return 'Staff'
 }
 
-function Overview({ overview, userTotal, reportTotals, jobTotal, engagementTotal, totalsPhase, onOpen, onRefresh }: { overview: OperationsOverview | null; userTotal: number | null; reportTotals: ReportTotals | null; jobTotal: number | null; engagementTotal: number | null; totalsPhase: 'loading' | 'ready'; onOpen: (route: AdminRoute) => void; onRefresh: () => void }) {
+function Overview({ overview, userTotal, reportTotals, jobTotal, engagementTotal, openCases, disputedEngagements, totalsPhase, onOpen, onRefresh }: { overview: OperationsOverview | null; userTotal: number | null; reportTotals: ReportTotals | null; jobTotal: number | null; engagementTotal: number | null; openCases: number | null; disputedEngagements: number | null; totalsPhase: 'loading' | 'ready'; onOpen: (route: AdminRoute) => void; onRefresh: () => void }) {
   const monitoring = monitoringHeadline(overview)
   const value = (phase: 'loading' | 'ready', number: number | null) => {
     if (phase === 'loading') return <span className="metric-skeleton" aria-label="Loading" />
@@ -337,10 +416,15 @@ function Overview({ overview, userTotal, reportTotals, jobTotal, engagementTotal
           <span className="metric-value">{totalsPhase === 'loading' ? <span className="metric-skeleton" aria-label="Loading" /> : reportTotals === null ? 'Unavailable' : String(reportTotals.openReports)}</span>
           <span className="metric-detail">{reportTotals === null ? 'Total not available' : `${reportTotals.totalReports} total reports`}</span>
         </button>
-        <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'disputes', cursor: null })}>
-          <span className="metric-title">Disputes</span>
-          <span className="metric-value">{totalsPhase === 'loading' ? <span className="metric-skeleton" aria-label="Loading" /> : 'View open disputes'}</span>
-          <span className="metric-detail">Total not available</span>
+        <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'disputes', ...EMPTY_DISPUTES, statuses: ['open', 'in_review'] })}>
+          <span className="metric-title">Open staff cases</span>
+          <span className="metric-value">{totalsPhase === 'loading' ? <span className="metric-skeleton" aria-label="Loading" /> : openCases === null ? 'Unavailable' : String(openCases)}</span>
+          <span className="metric-detail">Open and in review. Not the engagement status.</span>
+        </button>
+        <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'disputes', ...EMPTY_DISPUTES, engagementState: ['disputed'] })}>
+          <span className="metric-title">Currently disputed engagements</span>
+          <span className="metric-value">{totalsPhase === 'loading' ? <span className="metric-skeleton" aria-label="Loading" /> : disputedEngagements === null ? 'Unavailable' : String(disputedEngagements)}</span>
+          <span className="metric-detail">Business status is disputed. A case can stay open after this changes.</span>
         </button>
         <button type="button" className="demo-metric" onClick={() => onOpen({ name: 'operations' })}>
           <span className="metric-title">Monitoring</span>
@@ -616,29 +700,6 @@ function UserDetail({
   )
 }
 
-function DisputeDetail({ dispute }: { dispute: StaffDispute }) {
-  return (
-    <section className="demo-panel">
-      <p>Status: Disputed</p>
-      <p>Client: {dispute.clientDisplayName ?? 'Name unavailable'}</p>
-      <p>Provider: {dispute.providerDisplayName ?? 'Name unavailable'}</p>
-      <p>{dispute.deletedAt ? `Engagement deleted ${formatWhen(dispute.deletedAt)}` : 'Engagement is not deleted'}</p>
-      <p>{dispute.disputeNote ?? 'No dispute note is recorded.'}</p>
-      {dispute.disputeAt ? <p>Dispute opened {formatWhen(dispute.disputeAt)}</p> : null}
-      <PaymentLine payment={dispute.payment} />
-    </section>
-  )
-}
-
-function PaymentLine({ payment }: { payment: StaffDispute['payment'] }) {
-  if (!payment) return <p>No payment is recorded.</p>
-  return (
-    <p>
-      {payment.simulated ? 'Simulated' : 'Payment'} {payment.amount} {payment.currency} · {payment.status}
-    </p>
-  )
-}
-
 function accountStatusMessage(result: { outcome: 'changed' | 'unchanged' | 'observed'; accountStatus: string }) {
   const word = result.accountStatus === 'SUSPENDED' ? 'suspended' : 'active'
   if (result.outcome === 'observed') return `The account is currently ${word}.`
@@ -648,7 +709,7 @@ function accountStatusMessage(result: { outcome: 'changed' | 'unchanged' | 'obse
 
 function backRoute(route: AdminRoute): AdminRoute {
   if (route.name === 'user') return { name: 'users', query: '', cursor: null }
-  if (route.name === 'dispute') return { name: 'disputes', cursor: null }
+  if (route.name === 'dispute') return { name: 'disputes', ...route.returnTo }
   if (route.name === 'report') return { name: 'reports', ...route.returnTo }
   if (route.name === 'marketplace-detail') return { name: 'marketplace', ...route.returnTo }
   return { name: 'home' }
@@ -665,11 +726,12 @@ async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
     return { name: 'placeholder', section: route.name }
   }
   if (route.name === 'home') {
-    const [operationsResult, usersResult, reportsResult, marketplaceResult] = await Promise.all([
+    const [operationsResult, usersResult, reportsResult, marketplaceResult, disputeResult] = await Promise.all([
       records.operations(),
       records.searchUsers('', null),
       records.reportSummary(),
       records.marketplaceSummary(),
+      records.disputeCaseSummary(),
     ])
     if (!operationsResult.ok && (operationsResult.kind === 'denied' || operationsResult.kind === 'expired')) {
       return failure(operationsResult.kind)
@@ -680,6 +742,9 @@ async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
     if (!reportsResult.ok && (reportsResult.kind === 'denied' || reportsResult.kind === 'expired')) {
       return failure(reportsResult.kind)
     }
+    if (!disputeResult.ok && (disputeResult.kind === 'denied' || disputeResult.kind === 'expired')) {
+      return failure(disputeResult.kind)
+    }
     return {
       name: 'overview',
       overview: operationsResult.ok ? operationsResult.data : null,
@@ -687,6 +752,8 @@ async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
       reportTotals: reportsResult.ok ? reportsResult.data : null,
       jobTotal: marketplaceResult.ok ? marketplaceResult.data.totalJobs : null,
       engagementTotal: marketplaceResult.ok ? marketplaceResult.data.totalEngagements : null,
+      openCases: disputeResult.ok ? disputeResult.data.openCases : null,
+      disputedEngagements: disputeResult.ok ? disputeResult.data.disputedEngagements : null,
       totalsPhase: 'ready',
     }
   }
@@ -704,11 +771,21 @@ async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
   }
   if (route.name === 'user') return fromOne(await records.user(route.id), (user) => ({ name: 'user', user }))
   if (route.name === 'disputes') {
-    return fromPage(await records.disputes(route.cursor), 'No disputed work is open.', (page) => ({
-      name: 'disputes',
-      items: page.items,
-      nextCursor: page.nextCursor,
-    }))
+    const query = { q: route.q, statuses: route.statuses, assignment: route.assignment, engagementState: route.engagementState, cursor: route.cursor }
+    const result = await records.disputeCases(query)
+    if (!result.ok) {
+      const phase = result.kind === 'denied' ? 'denied' : result.kind === 'expired' ? 'expired' : 'unavailable'
+      return { name: 'disputes', query, items: [], nextCursor: null, total: null, matchCount: null, phase }
+    }
+    return { name: 'disputes', query, items: result.data.items, nextCursor: result.data.nextCursor, total: result.data.total, matchCount: result.data.matchCount, phase: 'ready' }
+  }
+  if (route.name === 'dispute') {
+    const result = await records.disputeCase(route.id)
+    if (!result.ok) {
+      const phase = result.kind === 'denied' ? 'denied' : result.kind === 'expired' ? 'expired' : result.kind === 'not-found' ? 'missing' : 'unavailable'
+      return { name: 'dispute', id: route.id, returnTo: route.returnTo, record: null, phase, notice: null }
+    }
+    return { name: 'dispute', id: route.id, returnTo: route.returnTo, record: result.data, phase: 'ready', notice: null }
   }
   if (route.name === 'operations') {
     return fromOne(await records.operations(), (overview) => ({ name: 'operations', overview }))
@@ -742,7 +819,7 @@ async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
   if (route.name === 'report') return fromOne(await records.report(route.id), (report) => ({ name: 'report', report, returnTo: route.returnTo }))
   if (route.name === 'marketplace') return loadMarketplace(records, route)
   if (route.name === 'marketplace-detail') return loadMarketplaceDetail(records, route)
-  return fromOne(await records.dispute(route.id), (dispute) => ({ name: 'dispute', dispute }))
+  return { name: 'unavailable' }
 }
 
 function marketQuery(route: MarketplaceQuery): MarketplaceQuery {
@@ -796,16 +873,6 @@ async function loadMarketplaceDetail(records: AdminRecords, route: { tab: Market
     return { name: 'marketplace-detail', tab: route.tab, id: route.id, returnTo: route.returnTo, record: null, phase: phase === 'ready' ? 'ready' : phase }
   }
   return { name: 'marketplace-detail', tab: route.tab, id: route.id, returnTo: route.returnTo, record: result.data, phase: 'ready' }
-}
-
-function fromPage<T>(
-  result: AdminResult<{ items: T[]; nextCursor: string | null }>,
-  empty: string,
-  present: (page: { items: T[]; nextCursor: string | null }) => View,
-): View {
-  if (!result.ok) return failure(result.kind)
-  if (result.data.items.length === 0) return { name: 'empty', message: empty }
-  return present(result.data)
 }
 
 function fromOne<T>(result: AdminResult<T>, present: (value: T) => View): View {

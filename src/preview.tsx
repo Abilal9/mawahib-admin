@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import type { AdminRecords, AdminRoute, OperationsOverview, StaffDispute, StaffUserDetail, StaffUserSummary } from './staff/adminTypes'
+import type { AdminRecords, AdminRoute, OperationsOverview, StaffUserDetail, StaffUserSummary } from './staff/adminTypes'
+import { EMPTY_DISPUTES } from './staff/adminTypes'
 import { InvitationScreen } from './staff/InvitationScreen'
 import { StaffPortal } from './staff/StaffPortal'
 import type { StaffAccessClient, StaffAuthClient } from './staff/types'
@@ -28,20 +29,6 @@ const previewUserDetail: StaffUserDetail = {
   providerEngagementCount: 3,
   simulatedPaymentCount: 1,
   statusAction: 'suspend',
-}
-
-const previewDispute: StaffDispute = {
-  id: previewDisputeId,
-  title: 'Preview poster',
-  status: 'disputed',
-  updatedAt: '2026-02-02T00:00:00.000Z',
-  deletedAt: null,
-  clientDisplayName: 'Ada Preview',
-  providerDisplayName: 'Nour Preview',
-  disputeEventId: '33333333-3333-4333-8333-333333333333',
-  disputeAt: '2026-02-02T00:00:00.000Z',
-  disputeNote: 'Synthetic dispute note',
-  payment: { amount: '150.00', currency: 'SAR', status: 'succeeded', simulated: true },
 }
 
 function previewOperations(mode: string): OperationsOverview {
@@ -257,9 +244,9 @@ function previewRoute(mode: string): AdminRoute | undefined {
     return { name: 'user', id: previewUserId }
   }
   if (mode === 'disputes' || mode === 'disputes-empty' || mode === 'disputes-error') {
-    return { name: 'disputes', cursor: null }
+    return { name: 'disputes', ...EMPTY_DISPUTES }
   }
-  if (mode === 'dispute') return { name: 'dispute', id: previewDisputeId }
+  if (mode === 'dispute') return { name: 'dispute', id: previewDisputeId, returnTo: EMPTY_DISPUTES }
   if (mode.startsWith('operations') && mode !== 'operations-denied') return { name: 'operations' }
   if (mode === 'accepted') return { name: 'home' }
   return undefined
@@ -276,8 +263,6 @@ function previewNotice(mode: string): string | null {
 function previewRecords(mode: string): AdminRecords {
   const usersFailed = mode === 'users-error'
   const usersEmpty = mode === 'users-empty'
-  const disputesFailed = mode === 'disputes-error'
-  const disputesEmpty = mode === 'disputes-empty'
   return {
     async searchUsers() {
       if (usersFailed) return { ok: false, kind: 'unavailable' }
@@ -323,13 +308,26 @@ function previewRecords(mode: string): AdminRecords {
         },
       }
     },
-    async disputes() {
-      if (disputesFailed) return { ok: false, kind: 'unavailable' }
-      if (disputesEmpty) return { ok: true, data: { items: [], nextCursor: null } }
-      return { ok: true, data: { items: [previewDispute], nextCursor: null } }
+    async disputeCaseSummary() {
+      return { ok: true, data: { openCases: 0, disputedEngagements: 0, totalCases: 0 } }
     },
-    async dispute() {
-      return { ok: true, data: previewDispute }
+    async disputeCases() {
+      return { ok: true, data: { items: [], nextCursor: null, total: 0, matchCount: 0 } }
+    },
+    async disputeCase() {
+      return { ok: false, kind: 'not-found' }
+    },
+    async disputeCaseAssignees() {
+      return { ok: true, data: { items: [] } }
+    },
+    async setDisputeCaseStatus() {
+      return { ok: false, kind: 'unavailable' }
+    },
+    async setDisputeCaseAssignment() {
+      return { ok: false, kind: 'unavailable' }
+    },
+    async addDisputeCaseNote() {
+      return { ok: false, kind: 'unavailable' }
     },
     async operations() {
       if (mode === 'operations-denied') return { ok: false, kind: 'denied' }

@@ -26,19 +26,84 @@ export type StaffDisputePayment = {
   simulated: boolean
 }
 
-export type StaffDispute = {
-  id: string
-  title: string
-  status: 'disputed'
-  updatedAt: string
-  deletedAt: string | null
-  clientDisplayName: string | null
-  providerDisplayName: string | null
-  disputeEventId: string | null
-  disputeAt: string | null
-  disputeNote: string | null
-  payment: StaffDisputePayment | null
+export type DisputeCaseStatus = 'open' | 'in_review' | 'closed'
+export type DisputeCaseOutcome = 'parties_resolved' | 'no_staff_action' | 'payment_follow_up' | 'invalid_or_duplicate' | 'other'
+export type DisputeCaseQuery = {
+  q: string
+  statuses: DisputeCaseStatus[]
+  assignment: Array<'unassigned' | 'mine' | 'others'>
+  engagementState: Array<'disputed' | 'not_disputed'>
+  cursor: string | null
 }
+export const EMPTY_DISPUTES: DisputeCaseQuery = {
+  q: '',
+  statuses: [],
+  assignment: [],
+  engagementState: [],
+  cursor: null,
+}
+export type DisputeParty = { id: string; displayName: string; accountStatus: string; deleted: boolean } | null
+export type DisputeAssignee = { staffMemberId: string; label: string; membershipStatus?: string; isSelf: boolean; conflicted?: boolean }
+export type DisputeCaseSummary = { openCases: number; disputedEngagements: number; totalCases: number }
+export type DisputeCaseListItem = {
+  id: string
+  status: DisputeCaseStatus
+  openedAt: string
+  engagement: { id: string; title: string; status: string; deleted: boolean }
+  client: DisputeParty
+  provider: DisputeParty
+  assignee: DisputeAssignee | null
+  engagementStillDisputed: boolean
+  reason: string | null
+}
+export type DisputeCaseDetail = {
+  case: {
+    id: string
+    status: DisputeCaseStatus
+    revision: number
+    openedAt: string
+    closedOutcome: DisputeCaseOutcome | null
+    closedNote: string | null
+    engagementStillDisputed: boolean
+  }
+  assignment: { assignee: (DisputeAssignee & { membershipStatus: string }) | null }
+  engagement: { id: string; title: string; status: string; source: string; deleted: boolean }
+  businessDisputeEnded: { toStatus: string; at: string; by: 'client' | 'provider' | 'other' } | null
+  client: DisputeParty
+  provider: DisputeParty
+  related: {
+    job: { id: string; title: string; status: string } | null
+    service: { id: string; title: string; status: string } | null
+    application: { id: string; status: string } | null
+  }
+  dispute: { reason: string | null; openedAt: string; openedBy: 'client' | 'provider' | 'other' | null }
+  engagementHistory: Array<{ id: string; fromStatus: string | null; toStatus: string; at: string; by: string; note: string | null }>
+  payments: Array<{
+    id: string
+    amount: string
+    currency: string
+    status: string
+    simulated: boolean
+    invoice: { id: string; invoiceNumber: string; status: string; total: string; currency: string; issuedAt: string | null; simulated: boolean; documentAvailable: boolean } | null
+  }>
+  notes: Array<{ id: string; body: string; author: { staffMemberId: string; label: string }; createdAt: string }>
+  history: Array<{ id: string; action: string; actor: { label: string }; reason: string; createdAt: string; previousStatus: string; resultingStatus: string }>
+  viewer: { canAct: boolean; blockedReason: 'linked_participant' | null; allowedActions: string[] }
+}
+export type DisputeStatusInput = {
+  action: 'start_review' | 'close' | 'reopen'
+  expectedRevision: number
+  note: string
+  outcome?: DisputeCaseOutcome
+  idempotencyKey: string
+}
+export type DisputeAssignmentInput = {
+  assigneeStaffMemberId: string | null
+  expectedRevision: number
+  note: string
+  idempotencyKey: string
+}
+export type DisputeMutation = { outcome: 'changed' | 'replayed'; case: { id: string; status: DisputeCaseStatus; revision: number } }
 
 export type StaffReportSummary = {
   id: string
@@ -143,8 +208,13 @@ export type AdminRecords = {
     input: { status: 'ACTIVE' | 'SUSPENDED'; expectedStatus: 'ACTIVE' | 'SUSPENDED'; reason: string },
   ): Promise<AdminResult<AccountStatusChange>>
   accountActions(targetAccountId: string): Promise<AdminResult<AdminPage<AccountActionRecord>>>
-  disputes(cursor: string | null): Promise<AdminResult<AdminPage<StaffDispute>>>
-  dispute(id: string): Promise<AdminResult<StaffDispute>>
+  disputeCaseSummary(): Promise<AdminResult<DisputeCaseSummary>>
+  disputeCases(query: DisputeCaseQuery): Promise<AdminResult<AdminPage<DisputeCaseListItem> & { total: number; matchCount: number }>>
+  disputeCase(id: string): Promise<AdminResult<DisputeCaseDetail>>
+  disputeCaseAssignees(id: string): Promise<AdminResult<{ items: DisputeAssignee[] }>>
+  setDisputeCaseStatus(id: string, input: DisputeStatusInput): Promise<AdminResult<DisputeMutation>>
+  setDisputeCaseAssignment(id: string, input: DisputeAssignmentInput): Promise<AdminResult<DisputeMutation>>
+  addDisputeCaseNote(id: string, input: { body: string; idempotencyKey: string }): Promise<AdminResult<{ outcome: 'changed' | 'replayed'; note: { id: string } }>>
   operations(): Promise<AdminResult<OperationsOverview>>
   reportSummary(): Promise<AdminResult<ReportTotals>>
   reports(query: ReportListQuery): Promise<AdminResult<StaffReportPage>>
@@ -174,8 +244,8 @@ export type AdminRoute =
   | { name: 'home' }
   | { name: 'users'; query: string; cursor: string | null }
   | { name: 'user'; id: string }
-  | { name: 'disputes'; cursor: string | null }
-  | { name: 'dispute'; id: string }
+  | ({ name: 'disputes' } & DisputeCaseQuery)
+  | { name: 'dispute'; id: string; returnTo: DisputeCaseQuery }
   | { name: 'operations' }
   | ({ name: 'reports' } & ReportListQuery)
   | { name: 'report'; id: string; returnTo: ReportListQuery }
@@ -322,7 +392,7 @@ export type StaffEngagementDetail = StaffEngagementListItem & {
   reviewWindowClosesAt: string | null
   listing: { id: string; title: string; deleted: boolean } | null
   serviceOffering: { id: string; title: string; deleted: boolean } | null
-  disputeLink: string | null
+  disputeCaseId: string | null
   payments: StaffPaymentAttempt[]
 }
 

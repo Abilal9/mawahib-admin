@@ -1,4 +1,4 @@
-import type { AccountStatusChange, AdminRecords, AdminResult, MarketplaceQuery, OperationsOverview, ReportTotals, StaffUserDetail } from './adminTypes'
+import type { AccountStatusChange, AdminRecords, AdminResult, DisputeAssignmentInput, DisputeMutation, DisputeStatusInput, MarketplaceQuery, OperationsOverview, ReportTotals, StaffUserDetail } from './adminTypes'
 
 export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Promise<string | null>): AdminRecords {
   const base = apiBaseUrl.replace(/\/$/, '')
@@ -25,6 +25,20 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
     } catch (error) {
       if (error instanceof MissingToken) return { ok: false, kind: 'expired' }
       return { ok: false, kind: 'unavailable' }
+    }
+  }
+
+  async function post<T>(path: string, body: unknown): Promise<AdminResult<T>> {
+    try {
+      const response = await send(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      return classify<T>(response)
+    } catch (error) {
+      if (error instanceof MissingToken) return { ok: false, kind: 'expired' }
+      return { ok: false, kind: 'uncertain' }
     }
   }
 
@@ -62,14 +76,34 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
       const params = new URLSearchParams({ targetAccountId })
       return get(`/admin/account-actions?${params.toString()}`)
     },
-    disputes(cursor) {
-      const params = new URLSearchParams()
-      if (cursor) params.set('cursor', cursor)
-      const suffix = params.size > 0 ? `?${params.toString()}` : ''
-      return get(`/admin/disputes${suffix}`)
+    disputeCaseSummary() {
+      return get('/admin/dispute-cases/summary')
     },
-    dispute(id) {
-      return get(`/admin/disputes/${encodeURIComponent(id)}`)
+    disputeCases(query) {
+      const params = new URLSearchParams()
+      const q = query.q.trim()
+      if (q) params.set('q', q)
+      if (query.statuses.length > 0) params.set('status', query.statuses.join(','))
+      if (query.assignment.length > 0) params.set('assignment', query.assignment.join(','))
+      if (query.engagementState.length > 0) params.set('engagementState', query.engagementState.join(','))
+      if (query.cursor) params.set('cursor', query.cursor)
+      const suffix = params.size > 0 ? `?${params.toString()}` : ''
+      return get(`/admin/dispute-cases${suffix}`)
+    },
+    disputeCase(id) {
+      return get(`/admin/dispute-cases/${encodeURIComponent(id)}`)
+    },
+    disputeCaseAssignees(id) {
+      return get(`/admin/dispute-cases/${encodeURIComponent(id)}/assignees`)
+    },
+    setDisputeCaseStatus(id, input: DisputeStatusInput) {
+      return post<DisputeMutation>(`/admin/dispute-cases/${encodeURIComponent(id)}/status`, input)
+    },
+    setDisputeCaseAssignment(id, input: DisputeAssignmentInput) {
+      return post<DisputeMutation>(`/admin/dispute-cases/${encodeURIComponent(id)}/assignment`, input)
+    },
+    addDisputeCaseNote(id, input) {
+      return post(`/admin/dispute-cases/${encodeURIComponent(id)}/notes`, input)
     },
     operations() {
       return get<OperationsOverview>('/admin/operations')

@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AdminShell } from './AdminShell'
-import { EMPTY_MARKETPLACE, type AdminRecords, type OperationsOverview, type StaffDispute, type StaffUserSummary } from './adminTypes'
+import { EMPTY_DISPUTES, EMPTY_MARKETPLACE, type AdminRecords, type OperationsOverview, type StaffUserSummary } from './adminTypes'
 import { OPERATIONS_POLL_MS } from './OperationsView'
 
 const user: StaffUserSummary = {
@@ -16,18 +16,24 @@ const user: StaffUserSummary = {
   deletedAt: null,
 }
 
-const dispute: StaffDispute = {
-  id: '22222222-2222-4222-8222-222222222222',
-  title: 'Preview poster',
-  status: 'disputed',
-  updatedAt: '2026-02-02T00:00:00.000Z',
-  deletedAt: null,
-  clientDisplayName: 'Ada Preview',
-  providerDisplayName: 'Nour Preview',
-  disputeEventId: '33333333-3333-4333-8333-333333333333',
-  disputeAt: '2026-02-02T00:00:00.000Z',
-  disputeNote: 'Synthetic dispute note',
-  payment: { amount: '150.00', currency: 'SAR', status: 'succeeded', simulated: true },
+const disputeId = '22222222-2222-4222-8222-222222222222'
+
+function caseDetail(note = 'Synthetic dispute note') {
+  return {
+    case: { id: disputeId, status: 'open' as const, revision: 0, openedAt: '2026-02-02T00:00:00.000Z', closedOutcome: null, closedNote: null, engagementStillDisputed: true },
+    assignment: { assignee: null },
+    engagement: { id: disputeId, title: 'Preview poster', status: 'disputed', source: 'listing_application', deleted: false },
+    businessDisputeEnded: null,
+    client: { id: user.id, displayName: 'Ada Preview', accountStatus: 'ACTIVE', deleted: false },
+    provider: { id: '55555555-5555-4555-8555-555555555555', displayName: 'Nour Preview', accountStatus: 'ACTIVE', deleted: false },
+    related: { job: null, service: null, application: null },
+    dispute: { reason: note, openedAt: '2026-02-02T00:00:00.000Z', openedBy: 'client' as const },
+    engagementHistory: [],
+    payments: [{ id: 'pay', amount: '150.00', currency: 'SAR', status: 'succeeded', simulated: true, invoice: null }],
+    notes: [],
+    history: [],
+    viewer: { canAct: true, blockedReason: null, allowedActions: ['close', 'note'] },
+  }
 }
 
 function records(partial: Partial<AdminRecords> = {}): AdminRecords {
@@ -56,11 +62,26 @@ function records(partial: Partial<AdminRecords> = {}): AdminRecords {
     async accountActions() {
       return { ok: true, data: { items: [], nextCursor: null } }
     },
-    async disputes() {
-      return { ok: true, data: { items: [dispute], nextCursor: null } }
+    async disputeCaseSummary() {
+      return { ok: true as const, data: { openCases: 2, disputedEngagements: 1, totalCases: 3 } }
     },
-    async dispute() {
-      return { ok: true, data: dispute }
+    async disputeCases() {
+      return { ok: true as const, data: { items: [], nextCursor: null, total: 3, matchCount: 0 } }
+    },
+    async disputeCase() {
+      return { ok: false as const, kind: 'not-found' as const }
+    },
+    async disputeCaseAssignees() {
+      return { ok: true as const, data: { items: [] } }
+    },
+    async setDisputeCaseStatus() {
+      return { ok: false as const, kind: 'conflict' as const }
+    },
+    async setDisputeCaseAssignment() {
+      return { ok: false as const, kind: 'conflict' as const }
+    },
+    async addDisputeCaseNote() {
+      return { ok: false as const, kind: 'conflict' as const }
     },
     async operations() {
       return { ok: true, data: operationsOverview() }
@@ -204,23 +225,23 @@ describe('AdminShell', () => {
     render(
       <AdminShell
         records={records({
-          async disputes() {
+          async disputeCases() {
             return { ok: false, kind: 'unavailable' }
           },
         })}
-        initialRoute={{ name: 'disputes', cursor: null }}
+        initialRoute={{ name: 'disputes', ...EMPTY_DISPUTES }}
         onSignOut={() => undefined}
       />,
     )
-    expect(await screen.findByText('The staff service is temporarily unavailable. Try again.')).toBeTruthy()
+    expect(await screen.findByText('Dispute cases are temporarily unavailable. The filters are unchanged.')).toBeTruthy()
     expect(screen.queryByText('Preview poster')).toBeNull()
   })
 
   it('labels a simulated dispute payment and denies access without keeping the record', async () => {
     const first = render(
-      <AdminShell records={records()} initialRoute={{ name: 'dispute', id: dispute.id }} onSignOut={() => undefined} />,
+      <AdminShell records={records({ async disputeCase() { return { ok: true, data: caseDetail() } } })} initialRoute={{ name: 'dispute', id: disputeId, returnTo: EMPTY_DISPUTES }} onSignOut={() => undefined} />,
     )
-    expect(await screen.findByText('Simulated 150.00 SAR · succeeded')).toBeTruthy()
+    expect(await screen.findByText('Simulated — no real payment')).toBeTruthy()
     expect(screen.getByText('Synthetic dispute note')).toBeTruthy()
     first.unmount()
 
@@ -270,20 +291,20 @@ describe('AdminShell', () => {
   })
 
   it('leaves the records screen when access is denied and ignores a late result', async () => {
-    let resolveLate: (value: Awaited<ReturnType<AdminRecords['dispute']>>) => void = () => undefined
+    let resolveLate: (value: Awaited<ReturnType<AdminRecords['disputeCase']>>) => void = () => undefined
     function Session() {
       const [denied, setDenied] = useState(false)
       if (denied) return <p>Staff access is not active for this account. Contact your administrator.</p>
       return (
         <AdminShell
           records={records({
-            async dispute() {
+            async disputeCase() {
               return new Promise((resolve) => {
                 resolveLate = resolve
               })
             },
           })}
-          initialRoute={{ name: 'dispute', id: dispute.id }}
+          initialRoute={{ name: 'dispute', id: disputeId, returnTo: EMPTY_DISPUTES }}
           onSignOut={() => undefined}
           onAccessDenied={() => setDenied(true)}
         />
@@ -291,7 +312,7 @@ describe('AdminShell', () => {
     }
     render(<Session />)
     expect(await screen.findByRole('heading', { name: 'Disputes' })).toBeTruthy()
-    expect(screen.getByRole('status', { name: 'Loading records' })).toBeTruthy()
+    expect(screen.getByRole('status', { name: 'Loading dispute case' })).toBeTruthy()
     await act(async () => {
       resolveLate({ ok: false, kind: 'denied' })
     })
@@ -428,11 +449,11 @@ describe('AdminShell', () => {
     render(
       <AdminShell
         records={records({
-          async dispute() {
-            return { ok: true, data: { ...dispute, disputeNote: markup } }
+          async disputeCase() {
+            return { ok: true, data: caseDetail(markup) }
           },
         })}
-        initialRoute={{ name: 'dispute', id: dispute.id }}
+        initialRoute={{ name: 'dispute', id: disputeId, returnTo: EMPTY_DISPUTES }}
         onSignOut={() => undefined}
       />,
     )
@@ -661,7 +682,9 @@ describe('AdminShell', () => {
     expect(screen.getByText('Open reports')).toBeTruthy()
     expect(screen.getByText('4')).toBeTruthy()
     expect(screen.getByText('9 total reports')).toBeTruthy()
-    expect(screen.getByText('View open disputes')).toBeTruthy()
+    expect(screen.getByText('Open staff cases')).toBeTruthy()
+    expect(screen.getByText('2')).toBeTruthy()
+    expect(screen.getByText('Currently disputed engagements')).toBeTruthy()
     expect(screen.getByText('Total jobs')).toBeTruthy()
     expect(screen.getByText('8')).toBeTruthy()
     expect(screen.getByText('Total engagements')).toBeTruthy()

@@ -453,7 +453,7 @@ function EngagementDetail({ record, onOpenUser, onOpenJob, onOpenService, onOpen
       {record.listing ? <p><button type="button" onClick={() => onOpenJob(record.listing!.id)}>{record.listing.title}</button></p> : null}
       {record.serviceOffering ? <p><button type="button" onClick={() => onOpenService(record.serviceOffering!.id)}>{record.serviceOffering.title}</button></p> : null}
       {record.applicationId ? <p><button type="button" onClick={() => onOpenApplication(record.applicationId!)}>View application</button></p> : null}
-      {record.disputeLink ? <p><button type="button" onClick={() => onOpenDispute(record.disputeLink!)}>View dispute</button></p> : null}
+      {record.disputeCaseId ? <p><button type="button" onClick={() => onOpenDispute(record.disputeCaseId!)}>View dispute</button></p> : null}
       <h2>Invoices</h2>
       <PaymentAttempts payments={record.payments} onViewInvoice={onViewInvoice} />
     </section>

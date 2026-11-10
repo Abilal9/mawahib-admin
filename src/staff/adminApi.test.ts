@@ -11,7 +11,7 @@ describe('createAdminRecords', () => {
     vi.stubGlobal('fetch', fetchImpl)
     const records = createAdminRecords('https://api.example.test/api/v1/', async () => 'staff-token')
     await records.searchUsers('ada@example.com', null)
-    await records.disputes('cursor-1')
+    await records.disputeCases({ q: '', statuses: [], assignment: [], engagementState: [], cursor: 'cursor-1' })
     expect(fetchImpl).toHaveBeenNthCalledWith(
       1,
       'https://api.example.test/api/v1/admin/users?q=ada%40example.com',
@@ -22,7 +22,7 @@ describe('createAdminRecords', () => {
     )
     expect(fetchImpl).toHaveBeenNthCalledWith(
       2,
-      'https://api.example.test/api/v1/admin/disputes?cursor=cursor-1',
+      'https://api.example.test/api/v1/admin/dispute-cases?cursor=cursor-1',
       expect.objectContaining({ credentials: 'omit' }),
     )
     expect(JSON.stringify(fetchImpl.mock.calls)).not.toContain('/auth/bootstrap')
@@ -80,8 +80,8 @@ describe('createAdminRecords', () => {
     const records = createAdminRecords('https://api.example.test/api/v1', async () => 'token')
     await expect(records.user('11111111-1111-4111-8111-111111111111')).resolves.toEqual({ ok: false, kind: 'denied' })
     await expect(records.user('11111111-1111-4111-8111-111111111111')).resolves.toEqual({ ok: false, kind: 'expired' })
-    await expect(records.dispute('22222222-2222-4222-8222-222222222222')).resolves.toEqual({ ok: false, kind: 'not-found' })
-    await expect(records.disputes(null)).resolves.toEqual({ ok: false, kind: 'unavailable' })
+    await expect(records.disputeCase('22222222-2222-4222-8222-222222222222')).resolves.toEqual({ ok: false, kind: 'not-found' })
+    await expect(records.disputeCases({ q: '', statuses: [], assignment: [], engagementState: [], cursor: null })).resolves.toEqual({ ok: false, kind: 'unavailable' })
     vi.unstubAllGlobals()
   })
 })

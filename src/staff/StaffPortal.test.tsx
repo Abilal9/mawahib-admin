@@ -196,7 +196,7 @@ function engagementDetail(): StaffEngagementDetail {
     reviewWindowClosesAt: null,
     listing: null,
     serviceOffering: null,
-    disputeLink: null,
+    disputeCaseId: null,
     payments: [{
       id: '66666666-6666-4666-8666-666666666666',
       amount: '150.00',
@@ -232,6 +232,9 @@ function detailRecords(engagement: StaffEngagementDetail): AdminRecords {
     },
     async marketplaceSummary() {
       return { ok: true, data: { totalJobs: 0, totalEngagements: 1 } }
+    },
+    async disputeCaseSummary() {
+      return { ok: true, data: { openCases: 0, disputedEngagements: 0, totalCases: 0 } }
     },
     async jobs() {
       return { ok: true, data: page }
