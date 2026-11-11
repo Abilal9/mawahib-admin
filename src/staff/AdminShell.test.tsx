@@ -32,7 +32,7 @@ function caseDetail(note = 'Synthetic dispute note') {
     payments: [{ id: 'pay', amount: '150.00', currency: 'SAR', status: 'succeeded', simulated: true, invoice: null }],
     notes: [],
     history: [],
-    viewer: { canAct: true, blockedReason: null, allowedActions: ['close', 'note'] },
+    viewer: { canAct: true, blockedReason: null, allowedActions: ['assign'] },
   }
 }
 
@@ -444,6 +444,26 @@ describe('AdminShell', () => {
     expect(screen.queryByText('ada.preview@example.com')).toBeNull()
   })
 
+  it('shows assignment before handling when the case is unassigned', async () => {
+    render(
+      <AdminShell
+        records={records({
+          async disputeCase() {
+            return { ok: true, data: caseDetail() }
+          },
+        })}
+        initialRoute={{ name: 'dispute', id: disputeId, returnTo: EMPTY_DISPUTES }}
+        onSignOut={() => undefined}
+      />,
+    )
+    expect(await screen.findByText('Assign this case to a reviewer before handling it.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Assign' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Start review' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Add note' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Close case' })).toBeNull()
+    expect(screen.getByText('Synthetic dispute note')).toBeTruthy()
+  })
+
   it('does not call a revision conflict when review has no note', async () => {
     const status = vi.fn()
     render(
@@ -505,7 +525,7 @@ describe('AdminShell', () => {
     const sent = posts.length
     const seen = reads
     fireEvent.click(screen.getByRole('button', { name: 'Refresh case' }))
-    await screen.findByText('Assignment is not required before review.')
+    expect(await screen.findByLabelText('Review note')).toHaveProperty('value', 'Looking at the delivery')
     expect(posts.length).toBe(sent)
     expect(reads).toBeGreaterThan(seen)
   })

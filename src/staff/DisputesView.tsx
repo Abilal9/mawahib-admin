@@ -191,21 +191,23 @@ export function DisputeCaseDetailView({
       <section className="demo-panel case-form">
         <h2>Assignment</h2>
         <p>{assignee ? `${assignee.label}${assignee.membershipStatus !== 'active' ? ' (no longer active)' : ''}${assignee.isSelf ? ' · Assigned to me' : ''}` : 'Unassigned'}</p>
-        <p className="section-note">Assignment is optional. Any operator who is not a participant in this engagement can start review, add a note, or close the case.</p>
+        {record.viewer.canAct && !record.viewer.allowedActions.some((action) => action === 'start_review' || action === 'note' || action === 'close' || action === 'reopen') ? (
+          <p>{record.assignment.assignee ? `Assigned to ${record.assignment.assignee.label}${record.assignment.assignee.membershipStatus !== 'active' ? ', who is no longer active' : ''}. Only the assigned reviewer can handle this case.` : 'Assign this case to a reviewer before handling it.'}</p>
+        ) : null}
         {record.viewer.canAct ? <AssignmentForm record={record} assignees={assignees} onAssign={onAssign} onUnassign={onUnassign} onRefresh={onRefresh} /> : null}
       </section>
       <section className="demo-panel case-form">
         <h2>Review</h2>
         <p>Handling status: {STATUS_LABEL[record.case.status]}</p>
-        {record.viewer.canAct && record.viewer.allowedActions.includes('start_review') ? <ReviewForm onStartReview={onStartReview} onRefresh={onRefresh} /> : null}
-        {record.case.status === 'closed' && record.viewer.canAct ? <ReopenForm onReopen={onReopen} onRefresh={onRefresh} /> : null}
+        {record.viewer.allowedActions.includes('start_review') ? <ReviewForm onStartReview={onStartReview} onRefresh={onRefresh} /> : null}
+        {record.viewer.allowedActions.includes('reopen') ? <ReopenForm onReopen={onReopen} onRefresh={onRefresh} /> : null}
       </section>
       <section className="demo-panel case-form">
         <h2>Internal notes</h2>
         {record.notes.length === 0 ? <p>No internal notes yet.</p> : record.notes.map((note) => (
           <p key={note.id}>{note.author.label} · {new Date(note.createdAt).toLocaleString()} · {note.body}</p>
         ))}
-        {record.viewer.canAct ? <NoteForm onNote={onNote} onRefresh={onRefresh} /> : null}
+        {record.viewer.allowedActions.includes('note') ? <NoteForm onNote={onNote} onRefresh={onRefresh} /> : null}
       </section>
       {record.viewer.canAct && record.viewer.allowedActions.includes('close') ? (
         <section className="demo-panel case-form">
@@ -333,7 +335,7 @@ function ReviewForm({ onStartReview, onRefresh }: {
   }
   return (
     <>
-      <p className="section-note">Assignment is not required before review.</p>
+      <p className="section-note">A review note is required. Assignment does not happen when this action is used.</p>
       <ActionFeedback message={message} conflict={conflict} onRefresh={async () => { setConflict(false); setMessage(null); await onRefresh() }} />
       <label>Review note
         <textarea value={note} onChange={(event) => setNote(event.target.value)} />
