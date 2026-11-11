@@ -565,6 +565,100 @@ describe('AdminShell', () => {
     expect(keys[0]).toBe(keys[1])
   })
 
+  it('reuses a lost internal-note request and starts a new one when the text changes', async () => {
+    const keys: string[] = []
+    const bodies: string[] = []
+    render(
+      <AdminShell
+        records={records({
+          async disputeCase() {
+            return {
+              ok: true,
+              data: {
+                ...caseDetail(),
+                viewer: { canAct: true, blockedReason: null, allowedActions: ['note'] },
+              },
+            }
+          },
+          async addDisputeCaseNote(_id, input) {
+            keys.push(input.idempotencyKey)
+            bodies.push(input.body)
+            return { ok: false as const, kind: 'uncertain' as const }
+          },
+        })}
+        initialRoute={{ name: 'dispute', id: disputeId, returnTo: EMPTY_DISPUTES }}
+        onSignOut={() => undefined}
+      />,
+    )
+    fireEvent.change(await screen.findByLabelText('Internal note'), { target: { value: 'Waiting for the file.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }))
+    expect(await screen.findByText('The result is uncertain. Try the action again when you are ready.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }))
+    fireEvent.change(screen.getByLabelText('Internal note'), { target: { value: 'A different note.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }))
+    expect(keys).toHaveLength(3)
+    expect(keys[0]).toBe(keys[1])
+    expect(keys[2]).not.toBe(keys[0])
+    expect(bodies).toEqual(['Waiting for the file.', 'Waiting for the file.', 'A different note.'])
+  })
+
+  it('distinguishes staff resolution, client acceptance, and unknown attribution', async () => {
+    const { unmount } = render(
+      <AdminShell
+        records={records({
+          async disputeCase() {
+            return {
+              ok: true,
+              data: {
+                ...caseDetail(),
+                businessDisputeEnded: {
+                  kind: 'staff_resolution' as const,
+                  actorLabel: 'ada@example.com',
+                  by: null,
+                  toStatus: 'delivered',
+                  at: '2026-11-11T12:05:00.000Z',
+                  closedThisCase: true,
+                },
+              },
+            }
+          },
+        })}
+        initialRoute={{ name: 'dispute', id: disputeId, returnTo: EMPTY_DISPUTES }}
+        onSignOut={() => undefined}
+      />,
+    )
+    expect(await screen.findByText(/ada@example.com moved this engagement to delivered/)).toBeTruthy()
+    expect(screen.getByText(/and closed this case/)).toBeTruthy()
+    unmount()
+
+    render(
+      <AdminShell
+        records={records({
+          async disputeCase() {
+            return {
+              ok: true,
+              data: {
+                ...caseDetail(),
+                businessDisputeEnded: {
+                  kind: 'participant' as const,
+                  actorLabel: null,
+                  by: 'client' as const,
+                  toStatus: 'completed',
+                  at: '2026-11-11T12:05:00.000Z',
+                  closedThisCase: false,
+                },
+              },
+            }
+          },
+        })}
+        initialRoute={{ name: 'dispute', id: disputeId, returnTo: EMPTY_DISPUTES }}
+        onSignOut={() => undefined}
+      />,
+    )
+    expect(await screen.findByText(/The client marked the engagement completed/)).toBeTruthy()
+    expect(screen.getByText(/This did not change the staff case/)).toBeTruthy()
+  })
+
   it('does not call a revision conflict when review has no note', async () => {
     const status = vi.fn()
     render(

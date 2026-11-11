@@ -70,7 +70,14 @@ export type DisputeCaseDetail = {
   }
   assignment: { assignee: (DisputeAssignee & { membershipStatus: string }) | null }
   engagement: { id: string; title: string; status: string; source: string; deleted: boolean }
-  businessDisputeEnded: { toStatus: string; at: string; by: 'client' | 'provider' | 'other' } | null
+  businessDisputeEnded: {
+    kind: 'staff_resolution' | 'participant' | 'unknown'
+    actorLabel: string | null
+    by: 'client' | 'provider' | null
+    toStatus: string
+    at: string
+    closedThisCase: boolean
+  } | null
   client: DisputeParty
   provider: DisputeParty
   related: {

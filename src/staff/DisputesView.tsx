@@ -173,7 +173,7 @@ export function DisputeCaseDetailView({
         {record.case.status === 'closed' && record.case.engagementStillDisputed ? <p>Case closed. The engagement is still disputed.</p> : null}
         {record.case.closedOutcome ? <p>Outcome: {OUTCOME_LABEL[record.case.closedOutcome]}</p> : null}
         {record.case.closedNote ? <p>{record.case.closedNote}</p> : null}
-        {record.businessDisputeEnded ? <p>The {record.businessDisputeEnded.by} marked the engagement {label(record.businessDisputeEnded.toStatus)} on {new Date(record.businessDisputeEnded.at).toLocaleString()}. This did not change the staff case.</p> : null}
+        {record.businessDisputeEnded ? <p>{businessEndSentence(record.businessDisputeEnded)}</p> : null}
       </section>
       <section className="demo-panel">
         <h2>Participants</h2>
@@ -266,6 +266,49 @@ export function DisputeCaseDetailView({
 
 type ActionResult = 'ok' | 'uncertain' | 'conflict' | 'rejected'
 
+function useBoundRequestKey() {
+  const bound = useRef<{ content: string; key: string } | null>(null)
+  return {
+    keyFor(content: string) {
+      if (!bound.current || bound.current.content !== content) {
+        bound.current = { content, key: crypto.randomUUID() }
+      }
+      return bound.current.key
+    },
+    release() {
+      bound.current = null
+    },
+  }
+}
+
+function finishStaffAction(
+  result: ActionResult,
+  keys: { release: () => void },
+  setConflict: (value: boolean) => void,
+  setMessage: (value: string | null) => void,
+  uncertain: string,
+  rejected: string,
+  onSuccess: () => void,
+) {
+  if (result === 'conflict') {
+    keys.release()
+    setConflict(true)
+    setMessage('This case changed. Refresh the case before trying again.')
+    return
+  }
+  setConflict(false)
+  if (result === 'uncertain') {
+    setMessage(uncertain)
+    return
+  }
+  keys.release()
+  if (result === 'ok') {
+    onSuccess()
+    return
+  }
+  setMessage(rejected)
+}
+
 function ActionFeedback({
   message,
   conflict,
@@ -295,30 +338,19 @@ function AssignmentForm({ record, assignees, onAssign, onUnassign, onRefresh }: 
   const [reason, setReason] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [conflict, setConflict] = useState(false)
+  const keys = useBoundRequestKey()
   const me = assignees.find((item) => item.isSelf && !item.conflicted)
-  async function submit(run: (key: string) => Promise<ActionResult>) {
+  async function submit(content: string, run: (key: string) => Promise<ActionResult>) {
     if (!reason.trim()) {
       setMessage('A reason is required for this assignment.')
       setConflict(false)
       return
     }
-    const result = await run(crypto.randomUUID())
-    if (result === 'conflict') {
-      setConflict(true)
-      setMessage('This case changed. Refresh the case before trying again.')
-      return
-    }
-    setConflict(false)
-    if (result === 'uncertain') {
-      setMessage('The result is uncertain. Try the action again when you are ready.')
-      return
-    }
-    if (result === 'rejected') {
-      setMessage('That assignment was not saved.')
-      return
-    }
-    setReason('')
-    setMessage(null)
+    const result = await run(keys.keyFor(content))
+    finishStaffAction(result, keys, setConflict, setMessage, 'The result is uncertain. Try the action again when you are ready.', 'That assignment was not saved.', () => {
+      setReason('')
+      setMessage(null)
+    })
   }
   return (
     <>
@@ -335,9 +367,9 @@ function AssignmentForm({ record, assignees, onAssign, onUnassign, onRefresh }: 
         <textarea value={reason} onChange={(event) => setReason(event.target.value)} />
       </label>
       <div className="actions">
-        {me ? <button type="button" className="secondary" onClick={() => void submit((key) => onAssign(me.staffMemberId, reason, key))}>Assign to me</button> : null}
-        <button type="button" disabled={!choice} onClick={() => void submit((key) => onAssign(choice, reason, key))}>{record.assignment.assignee ? 'Reassign' : 'Assign'}</button>
-        {record.viewer.allowedActions.includes('unassign') ? <button type="button" className="secondary" onClick={() => void submit((key) => onUnassign(reason, key))}>Unassign</button> : null}
+        {me ? <button type="button" className="secondary" onClick={() => void submit(`assign:${me.staffMemberId}:${reason}`, (key) => onAssign(me.staffMemberId, reason, key))}>Assign to me</button> : null}
+        <button type="button" disabled={!choice} onClick={() => void submit(`assign:${choice}:${reason}`, (key) => onAssign(choice, reason, key))}>{record.assignment.assignee ? 'Reassign' : 'Assign'}</button>
+        {record.viewer.allowedActions.includes('unassign') ? <button type="button" className="secondary" onClick={() => void submit(`unassign:${reason}`, (key) => onUnassign(reason, key))}>Unassign</button> : null}
       </div>
     </>
   )
@@ -350,25 +382,18 @@ function ReviewForm({ onStartReview, onRefresh }: {
   const [note, setNote] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [conflict, setConflict] = useState(false)
+  const keys = useBoundRequestKey()
   async function submit() {
     if (!note.trim()) {
       setMessage('A note is required to start review.')
       setConflict(false)
       return
     }
-    const result = await onStartReview(note, crypto.randomUUID())
-    if (result === 'conflict') {
-      setConflict(true)
-      setMessage('This case changed. Refresh the case before trying again.')
-      return
-    }
-    setConflict(false)
-    if (result === 'ok') {
+    const result = await onStartReview(note, keys.keyFor(`review:${note}`))
+    finishStaffAction(result, keys, setConflict, setMessage, 'The result is uncertain. Try the action again when you are ready.', 'Review was not started.', () => {
       setNote('')
       setMessage(null)
-      return
-    }
-    setMessage(result === 'uncertain' ? 'The result is uncertain. Try the action again when you are ready.' : 'Review was not started.')
+    })
   }
   return (
     <>
@@ -391,25 +416,18 @@ function NoteForm({ onNote, onRefresh }: {
   const [body, setBody] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [conflict, setConflict] = useState(false)
+  const keys = useBoundRequestKey()
   async function submit() {
     if (!body.trim()) {
       setMessage('Write the note before adding it.')
       setConflict(false)
       return
     }
-    const result = await onNote(body, crypto.randomUUID())
-    if (result === 'conflict') {
-      setConflict(true)
-      setMessage('This case changed. Refresh the case before trying again.')
-      return
-    }
-    setConflict(false)
-    if (result === 'ok') {
+    const result = await onNote(body, keys.keyFor(`note:${body}`))
+    finishStaffAction(result, keys, setConflict, setMessage, 'The result is uncertain. Try the action again when you are ready.', 'The note was not saved.', () => {
       setBody('')
       setMessage(null)
-      return
-    }
-    setMessage(result === 'uncertain' ? 'The result is uncertain. Try the action again when you are ready.' : 'The note was not saved.')
+    })
   }
   return (
     <>
@@ -433,6 +451,7 @@ function CloseForm({ onClose, onRefresh }: {
   const [confirmed, setConfirmed] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [conflict, setConflict] = useState(false)
+  const keys = useBoundRequestKey()
   async function submit() {
     if (!note.trim()) {
       setMessage('A closing note is required.')
@@ -444,20 +463,12 @@ function CloseForm({ onClose, onRefresh }: {
       setConflict(false)
       return
     }
-    const result = await onClose(outcome, note, crypto.randomUUID())
-    if (result === 'conflict') {
-      setConflict(true)
-      setMessage('This case changed. Refresh the case before trying again.')
-      return
-    }
-    setConflict(false)
-    if (result === 'ok') {
+    const result = await onClose(outcome, note, keys.keyFor(`close:${outcome}:${note}`))
+    finishStaffAction(result, keys, setConflict, setMessage, 'The result is uncertain. Try the action again when you are ready.', 'The case was not closed.', () => {
       setNote('')
       setConfirmed(false)
       setMessage(null)
-      return
-    }
-    setMessage(result === 'uncertain' ? 'The result is uncertain. Try the action again when you are ready.' : 'The case was not closed.')
+    })
   }
   return (
     <>
@@ -488,25 +499,18 @@ function ReopenForm({ onReopen, onRefresh }: {
   const [note, setNote] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [conflict, setConflict] = useState(false)
+  const keys = useBoundRequestKey()
   async function submit() {
     if (!note.trim()) {
       setMessage('A reason is required to reopen the case.')
       setConflict(false)
       return
     }
-    const result = await onReopen(note, crypto.randomUUID())
-    if (result === 'conflict') {
-      setConflict(true)
-      setMessage('This case changed. Refresh the case before trying again.')
-      return
-    }
-    setConflict(false)
-    if (result === 'ok') {
+    const result = await onReopen(note, keys.keyFor(`reopen:${note}`))
+    finishStaffAction(result, keys, setConflict, setMessage, 'The result is uncertain. Try the action again when you are ready.', 'The case was not reopened.', () => {
       setNote('')
       setMessage(null)
-      return
-    }
-    setMessage(result === 'uncertain' ? 'The result is uncertain. Try the action again when you are ready.' : 'The case was not reopened.')
+    })
   }
   return (
     <>
@@ -528,7 +532,7 @@ function ResolutionForm({ action, onResolve, onRefresh }: {
   onRefresh: () => Promise<void>
 }) {
   const copy = RESOLUTION_COPY[action]
-  const requestKey = useRef<string | null>(null)
+  const keys = useBoundRequestKey()
   const [note, setNote] = useState('')
   const [confirmed, setConfirmed] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -544,27 +548,12 @@ function ResolutionForm({ action, onResolve, onRefresh }: {
       setConflict(false)
       return
     }
-    if (!requestKey.current) requestKey.current = crypto.randomUUID()
-    const result = await onResolve(action, note, requestKey.current)
-    if (result === 'conflict') {
-      requestKey.current = null
-      setConflict(true)
-      setMessage('This case changed. Refresh the case before trying again.')
-      return
-    }
-    setConflict(false)
-    if (result === 'uncertain') {
-      setMessage('The result is uncertain. Try the action again when you are ready.')
-      return
-    }
-    requestKey.current = null
-    if (result === 'ok') {
+    const result = await onResolve(action, note, keys.keyFor(`${action}:${note}`))
+    finishStaffAction(result, keys, setConflict, setMessage, 'The result is uncertain. Try the action again when you are ready.', 'That resolution was not saved.', () => {
       setNote('')
       setConfirmed(false)
       setMessage(null)
-      return
-    }
-    setMessage('That resolution was not saved.')
+    })
   }
   return (
     <div>
@@ -593,6 +582,18 @@ function resolutionChoice(record: DisputeCaseDetail, action: DisputeResolutionAc
     available: record.viewer.allowedActions.includes(action),
     reason: null,
   }
+}
+
+function businessEndSentence(end: NonNullable<DisputeCaseDetail['businessDisputeEnded']>) {
+  const when = new Date(end.at).toLocaleString()
+  const status = label(end.toStatus)
+  if (end.kind === 'staff_resolution') {
+    return `${end.actorLabel ?? 'A staff operator'} moved this engagement to ${status} on ${when} and closed this case.`
+  }
+  if (end.kind === 'participant' && end.by) {
+    return `The ${end.by} marked the engagement ${status} on ${when}. This did not change the staff case.`
+  }
+  return `The engagement moved to ${status} on ${when}. This did not change the staff case.`
 }
 
 function actionLabel(value: string) {
