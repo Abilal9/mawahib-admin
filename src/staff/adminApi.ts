@@ -145,7 +145,9 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
     async setContentVisibility(kind, id, input) {
       const path = kind === 'post'
         ? `/admin/posts/${encodeURIComponent(id)}/moderation`
-        : `/admin/post-comments/${encodeURIComponent(id)}/moderation`
+        : kind === 'comment'
+          ? `/admin/post-comments/${encodeURIComponent(id)}/moderation`
+          : `/admin/engagement-reviews/${encodeURIComponent(id)}/moderation`
       try {
         const response = await send(path, {
           method: 'POST',

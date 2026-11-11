@@ -302,6 +302,7 @@ export function ReportDetail({
         <PersonLine label="Reported account" person={report.reportedUser} onOpen={onOpenAccount} />
       </section>
       <ContentVisibility report={report} records={records} onChanged={onChanged} />
+      <ReviewVisibility report={report} records={records} onChanged={onChanged} />
       <section className="report-panel">
         <h2>Report actions</h2>
         <form onSubmit={(event) => event.preventDefault()}>
@@ -333,6 +334,84 @@ export function ReportDetail({
         )}
       </section>
     </article>
+  )
+}
+
+function ReviewVisibility({
+  report,
+  records,
+  onChanged,
+}: {
+  report: StaffReportDetail
+  records: AdminRecords
+  onChanged: () => void
+}) {
+  const moderation = report.contentModeration
+  const [reason, setReason] = useState('')
+  const [confirmed, setConfirmed] = useState(false)
+  const [pending, setPending] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  if (!moderation || moderation.kind !== 'review') return null
+  const current = moderation
+  const nextHidden = !current.hidden
+  const label = current.hidden ? 'Restore review' : 'Hide review'
+  const eligible = current.publicEligible
+  async function submit() {
+    const text = reason.trim()
+    if (pending || !confirmed || text.length < 1 || text.length > 500) return
+    setPending(true)
+    setNotice(null)
+    const result = await records.setContentVisibility('review', current.targetId, {
+      hidden: nextHidden,
+      expectedVersion: current.version,
+      reason: text,
+    })
+    setPending(false)
+    setNotice(moderationNotice(result))
+    if (result.ok && result.data.outcome === 'changed') {
+      setReason('')
+      setConfirmed(false)
+    }
+    if (shouldRefreshModeration(result)) onChanged()
+  }
+  return (
+    <section className="report-panel">
+      <h2>Review visibility</h2>
+      <p>{moderation.rating ?? '—'} stars · {moderation.direction === 'provider_to_client' ? 'Provider reviewed the client' : 'Client reviewed the provider'}</p>
+      <p className="report-text">{moderation.body || 'No written review.'}</p>
+      <p>Author: {moderation.author?.displayName ?? 'Unavailable'} · Reviewed person: {moderation.reviewedPerson?.displayName ?? 'Unavailable'}</p>
+      {moderation.engagement ? <p>Engagement: {moderation.engagement.title}{moderation.engagement.deleted ? ' · Deleted' : ''}</p> : null}
+      {moderation.service ? <p>Service: {moderation.service.title}</p> : null}
+      <p>{moderation.hidden ? 'Hidden by Mawahib.' : 'Not hidden by staff.'} {moderation.deleted ? 'The engagement is deleted, so restoring the staff restriction does not publish the review.' : ''}</p>
+      <p>Public eligible reviews in this direction: {eligible && eligible.count > 0 && eligible.average != null ? `${eligible.average.toFixed(1)} from ${eligible.count}` : 'No reviews yet'}</p>
+      <p>Hidden from that public rating: {moderation.hiddenReviewCount ?? 0}</p>
+      <form onSubmit={(event) => event.preventDefault()}>
+        <label htmlFor="review-reason">Reason for this visibility change</label>
+        <textarea id="review-reason" value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} />
+        <label className="content-confirm">
+          <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
+          <span>{nextHidden
+            ? 'I understand this removes the review from public views and rating calculations. The report, engagement, payments, and invoices stay unchanged.'
+            : 'I understand this clears the staff restriction. The review is included again only if it is otherwise eligible. The report, engagement, payments, and invoices stay unchanged.'}</span>
+        </label>
+        <button type="button" disabled={pending || !confirmed || reason.trim().length < 1 || (moderation.deleted && nextHidden)} aria-busy={pending} onClick={() => void submit()}>
+          {pending ? <ButtonSpinner /> : null}
+          {label}
+        </button>
+      </form>
+      {notice ? <p role="alert">{notice}</p> : null}
+      <h3>Review history</h3>
+      {moderation.history.length === 0 ? <p>No visibility changes yet.</p> : (
+        <ol className="report-history">
+          {moderation.history.map((event) => (
+            <li key={event.id}>
+              <p><strong>{labelAction(event.action)}</strong> · {event.actorLabel ?? 'Staff operator'} · {formatWhen(event.createdAt)}</p>
+              {event.reason ? <p className="report-text">{event.reason}</p> : null}
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
   )
 }
 
@@ -541,8 +620,8 @@ function labelAction(value: string): string {
   if (value === 'resolved' || value === 'report_resolved') return 'Resolve'
   if (value === 'dismissed' || value === 'report_dismissed') return 'Dismiss'
   if (value === 'open' || value === 'report_reopened') return 'Reopen'
-  if (value === 'post_hidden' || value === 'comment_hidden') return 'Hide content'
-  if (value === 'post_restored' || value === 'comment_restored') return 'Restore content'
+  if (value === 'post_hidden' || value === 'comment_hidden' || value === 'review_hidden') return 'Hide content'
+  if (value === 'post_restored' || value === 'comment_restored' || value === 'review_restored') return 'Restore content'
   return value
 }
 
