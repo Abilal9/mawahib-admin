@@ -27,7 +27,9 @@ export type StaffDisputePayment = {
 }
 
 export type DisputeCaseStatus = 'open' | 'in_review' | 'closed'
-export type DisputeCaseOutcome = 'parties_resolved' | 'no_staff_action' | 'payment_follow_up' | 'invalid_or_duplicate' | 'other'
+export type DisputeCaseOutcome = 'parties_resolved' | 'no_staff_action' | 'payment_follow_up' | 'invalid_or_duplicate' | 'other' | 'returned_for_client_review' | 'further_work_agreed'
+export type DisputeResolutionAction = 'return_to_client_review' | 'further_work' | 'follow_up'
+export type DisputeResolutionOption = { available: boolean; reason: string | null }
 export type DisputeCaseQuery = {
   q: string
   statuses: DisputeCaseStatus[]
@@ -86,8 +88,13 @@ export type DisputeCaseDetail = {
     simulated: boolean
     invoice: { id: string; invoiceNumber: string; status: string; total: string; currency: string; issuedAt: string | null; simulated: boolean; documentAvailable: boolean } | null
   }>
-  notes: Array<{ id: string; body: string; author: { staffMemberId: string; label: string }; createdAt: string }>
-  history: Array<{ id: string; action: string; actor: { label: string }; reason: string; createdAt: string; previousStatus: string; resultingStatus: string }>
+  resolutions?: {
+    return_to_client_review: DisputeResolutionOption
+    further_work: DisputeResolutionOption
+    follow_up: DisputeResolutionOption
+  }
+  notes: Array<{ id: string; kind?: 'note' | 'follow_up'; body: string; author: { staffMemberId: string; label: string }; createdAt: string }>
+  history: Array<{ id: string; action: string; actor: { label: string }; reason: string; createdAt: string; previousStatus: string; resultingStatus: string; engagementStatusAtAction?: string | null; engagementResultingStatus?: string | null }>
   viewer: { canAct: boolean; blockedReason: 'linked_participant' | null; allowedActions: string[] }
 }
 export type DisputeStatusInput = {
@@ -103,7 +110,19 @@ export type DisputeAssignmentInput = {
   note: string
   idempotencyKey: string
 }
-export type DisputeMutation = { outcome: 'changed' | 'replayed'; case: { id: string; status: DisputeCaseStatus; revision: number } }
+export type DisputeMutation = {
+  outcome: 'changed' | 'replayed'
+  case: { id: string; status: DisputeCaseStatus; revision: number; closedOutcome?: DisputeCaseOutcome | null }
+  engagement?: { previousStatus: string; status: string }
+  paymentsChanged?: boolean
+}
+export type DisputeResolutionInput = {
+  action: DisputeResolutionAction
+  expectedRevision: number
+  expectedEngagementStatus: 'disputed'
+  note: string
+  idempotencyKey: string
+}
 
 export type StaffReportSummary = {
   id: string
@@ -215,6 +234,7 @@ export type AdminRecords = {
   setDisputeCaseStatus(id: string, input: DisputeStatusInput): Promise<AdminResult<DisputeMutation>>
   setDisputeCaseAssignment(id: string, input: DisputeAssignmentInput): Promise<AdminResult<DisputeMutation>>
   addDisputeCaseNote(id: string, input: { body: string; idempotencyKey: string }): Promise<AdminResult<{ outcome: 'changed' | 'replayed'; note: { id: string } }>>
+  resolveDisputeCase(id: string, input: DisputeResolutionInput): Promise<AdminResult<DisputeMutation>>
   operations(): Promise<AdminResult<OperationsOverview>>
   reportSummary(): Promise<AdminResult<ReportTotals>>
   reports(query: ReportListQuery): Promise<AdminResult<StaffReportPage>>

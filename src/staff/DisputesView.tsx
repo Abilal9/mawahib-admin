@@ -1,10 +1,12 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import type {
   DisputeCaseDetail,
   DisputeCaseListItem,
   DisputeCaseOutcome,
   DisputeCaseQuery,
   DisputeCaseStatus,
+  DisputeResolutionAction,
+  DisputeResolutionOption,
 } from './adminTypes'
 import { LoadingIndicator } from './LoadingIndicator'
 
@@ -12,6 +14,7 @@ const STATUSES: DisputeCaseStatus[] = ['open', 'in_review', 'closed']
 const ASSIGNMENTS = ['unassigned', 'mine', 'others'] as const
 const ENGAGEMENT = ['disputed', 'not_disputed'] as const
 const OUTCOMES: DisputeCaseOutcome[] = ['parties_resolved', 'no_staff_action', 'payment_follow_up', 'invalid_or_duplicate', 'other']
+const RESOLUTION_ACTIONS: DisputeResolutionAction[] = ['return_to_client_review', 'further_work', 'follow_up']
 
 const STATUS_LABEL: Record<string, string> = { open: 'Open', in_review: 'In review', closed: 'Closed' }
 const ASSIGNMENT_LABEL: Record<string, string> = { unassigned: 'Unassigned', mine: 'Assigned to me', others: 'Assigned to another operator' }
@@ -22,6 +25,25 @@ const OUTCOME_LABEL: Record<string, string> = {
   payment_follow_up: 'Payment follow-up',
   invalid_or_duplicate: 'Invalid or duplicate',
   other: 'Other',
+  returned_for_client_review: 'Returned to client review',
+  further_work_agreed: 'Further work agreed',
+}
+const RESOLUTION_COPY: Record<DisputeResolutionAction, { title: string; button: string; confirm: string }> = {
+  return_to_client_review: {
+    title: 'Return to client review',
+    button: 'Return to client review',
+    confirm: 'I understand this returns the engagement to Delivered for the client to review. It does not accept the work, collect payment, release funds, or create an invoice.',
+  },
+  further_work: {
+    title: 'Further work agreed',
+    button: 'Record further work',
+    confirm: 'I understand this returns the engagement to In progress so the provider can continue and deliver again. Payments, invoices, and earlier deliveries stay as they are. This records an agreement I have already established.',
+  },
+  follow_up: {
+    title: 'Follow-up still required',
+    button: 'Record follow-up',
+    confirm: 'I understand this keeps the engagement Disputed and does not close the case. It is not a completed resolution.',
+  },
 }
 
 export function DisputeCaseList({
@@ -116,6 +138,7 @@ export function DisputeCaseDetailView({
   onAssign,
   onUnassign,
   onNote,
+  onResolve,
   onRefresh,
   assignees,
 }: {
@@ -130,6 +153,7 @@ export function DisputeCaseDetailView({
   onAssign: (staffMemberId: string, note: string, key: string) => Promise<ActionResult>
   onUnassign: (note: string, key: string) => Promise<ActionResult>
   onNote: (body: string, key: string) => Promise<ActionResult>
+  onResolve: (action: DisputeResolutionAction, note: string, key: string) => Promise<ActionResult>
   onRefresh: () => Promise<void>
   assignees: Array<{ staffMemberId: string; label: string; isSelf: boolean; conflicted: boolean }>
 }) {
@@ -205,21 +229,34 @@ export function DisputeCaseDetailView({
       <section className="demo-panel case-form">
         <h2>Internal notes</h2>
         {record.notes.length === 0 ? <p>No internal notes yet.</p> : record.notes.map((note) => (
-          <p key={note.id}>{note.author.label} · {new Date(note.createdAt).toLocaleString()} · {note.body}</p>
+          <p key={note.id}>{note.kind === 'follow_up' ? 'Follow-up · ' : ''}{note.author.label} · {new Date(note.createdAt).toLocaleString()} · {note.body}</p>
         ))}
         {record.viewer.allowedActions.includes('note') ? <NoteForm onNote={onNote} onRefresh={onRefresh} /> : null}
       </section>
+      {handlesCase(record) ? (
+        <section className="demo-panel case-form">
+          <h2>Business resolution</h2>
+          <p className="section-note">These choices change the engagement only through a validated transition. Payments and invoices stay as they are.</p>
+          <p>Current engagement status: {label(record.engagement.status)}</p>
+          {RESOLUTION_ACTIONS.map((action) => {
+            const choice = resolutionChoice(record, action)
+            return choice.available
+              ? <ResolutionForm key={action} action={action} onResolve={onResolve} onRefresh={onRefresh} />
+              : choice.reason ? <p key={action}>{RESOLUTION_COPY[action].title}: {choice.reason}</p> : null
+          })}
+        </section>
+      ) : null}
       {record.viewer.canAct && record.viewer.allowedActions.includes('close') ? (
         <section className="demo-panel case-form">
-          <h2>Close case</h2>
-          <p className="section-note">Closing this case does not change the engagement status or any payment.</p>
+          <h2>Administrative closure</h2>
+          <p className="section-note">Closing this case does not change the engagement status, restore an earlier status, or change any payment.</p>
           <CloseForm onClose={onClose} onRefresh={onRefresh} />
         </section>
       ) : null}
       <section className="demo-panel">
         <h2>History</h2>
         {record.history.length === 0 ? <p>No staff actions yet.</p> : record.history.map((event) => (
-          <p key={event.id}>{label(event.action)} · {event.actor.label} · {new Date(event.createdAt).toLocaleString()} · {label(event.previousStatus)} → {label(event.resultingStatus)} · {event.reason}</p>
+          <p key={event.id}>{actionLabel(event.action)} · {event.actor.label} · {new Date(event.createdAt).toLocaleString()} · {label(event.previousStatus)} → {label(event.resultingStatus)}{event.engagementStatusAtAction ? ` · Engagement ${label(event.engagementStatusAtAction)} → ${label(event.engagementResultingStatus ?? event.engagementStatusAtAction)}` : ''} · {event.reason}</p>
         ))}
       </section>
       {record.viewer.canAct ? null : <p>You are linked to a participant in this engagement.</p>}
@@ -474,6 +511,7 @@ function ReopenForm({ onReopen, onRefresh }: {
   return (
     <>
       <ActionFeedback message={message} conflict={conflict} onRefresh={async () => { setConflict(false); setMessage(null); await onRefresh() }} />
+      <p className="section-note">Reopening this case does not put the engagement back into dispute or undo a previous resolution.</p>
       <label>Reason to reopen
         <textarea value={note} onChange={(event) => setNote(event.target.value)} />
       </label>
@@ -482,6 +520,87 @@ function ReopenForm({ onReopen, onRefresh }: {
       </div>
     </>
   )
+}
+
+function ResolutionForm({ action, onResolve, onRefresh }: {
+  action: DisputeResolutionAction
+  onResolve: (action: DisputeResolutionAction, note: string, key: string) => Promise<ActionResult>
+  onRefresh: () => Promise<void>
+}) {
+  const copy = RESOLUTION_COPY[action]
+  const requestKey = useRef<string | null>(null)
+  const [note, setNote] = useState('')
+  const [confirmed, setConfirmed] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const [conflict, setConflict] = useState(false)
+  async function submit() {
+    if (!note.trim()) {
+      setMessage('An explanatory note is required.')
+      setConflict(false)
+      return
+    }
+    if (!confirmed) {
+      setMessage(copy.confirm)
+      setConflict(false)
+      return
+    }
+    if (!requestKey.current) requestKey.current = crypto.randomUUID()
+    const result = await onResolve(action, note, requestKey.current)
+    if (result === 'conflict') {
+      requestKey.current = null
+      setConflict(true)
+      setMessage('This case changed. Refresh the case before trying again.')
+      return
+    }
+    setConflict(false)
+    if (result === 'uncertain') {
+      setMessage('The result is uncertain. Try the action again when you are ready.')
+      return
+    }
+    requestKey.current = null
+    if (result === 'ok') {
+      setNote('')
+      setConfirmed(false)
+      setMessage(null)
+      return
+    }
+    setMessage('That resolution was not saved.')
+  }
+  return (
+    <div>
+      <h3>{copy.title}</h3>
+      <ActionFeedback message={message} conflict={conflict} onRefresh={async () => { setConflict(false); setMessage(null); await onRefresh() }} />
+      <label>{copy.title} note
+        <textarea value={note} onChange={(event) => setNote(event.target.value)} />
+      </label>
+      <label className="confirm-line">
+        <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
+        {copy.confirm}
+      </label>
+      <div className="actions">
+        <button type="button" onClick={() => void submit()}>{copy.button}</button>
+      </div>
+    </div>
+  )
+}
+
+function handlesCase(record: DisputeCaseDetail) {
+  return record.viewer.allowedActions.some((action) => action === 'start_review' || action === 'note' || action === 'close' || action === 'reopen' || action === 'return_to_client_review' || action === 'further_work' || action === 'follow_up')
+}
+
+function resolutionChoice(record: DisputeCaseDetail, action: DisputeResolutionAction): DisputeResolutionOption {
+  return record.resolutions?.[action] ?? {
+    available: record.viewer.allowedActions.includes(action),
+    reason: null,
+  }
+}
+
+function actionLabel(value: string) {
+  if (value === 'returned_for_client_review') return 'Returned to client review'
+  if (value === 'further_work_agreed') return 'Further work agreed'
+  if (value === 'follow_up_recorded') return 'Follow-up recorded'
+  if (value === 'closed') return 'Case closed'
+  return label(value)
 }
 
 function FilterChoices<T extends string>({ label, options, selected, labels, onToggle }: {

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
-import type { AccountActionRecord, AdminRecords, AdminResult, AdminRoute, DisputeCaseDetail, DisputeCaseListItem, DisputeCaseQuery, DisputeMutation, OperationsOverview, ReportListQuery, ReportTotals, StaffReportDetail, StaffReportSummary, StaffUserDetail, StaffUserSummary } from './adminTypes'
+import type { AccountActionRecord, AdminRecords, AdminResult, AdminRoute, DisputeCaseDetail, DisputeCaseListItem, DisputeCaseQuery, DisputeMutation, DisputeResolutionAction, OperationsOverview, ReportListQuery, ReportTotals, StaffReportDetail, StaffReportSummary, StaffUserDetail, StaffUserSummary } from './adminTypes'
 import { DisputeCaseDetailView, DisputeCaseList } from './DisputesView'
 import { EMPTY_DISPUTES } from './adminTypes'
 import { OPERATIONS_POLL_MS, OperationsView } from './OperationsView'
@@ -234,6 +234,29 @@ export function AdminShell({
     return 'ok' as const
   }
 
+  async function actResolution(record: DisputeCaseDetail | null, action: DisputeResolutionAction, note: string, key: string) {
+    if (!record) return 'rejected' as const
+    const result = await records.resolveDisputeCase(record.case.id, {
+      action,
+      expectedRevision: revisionRef.current ?? record.case.revision,
+      expectedEngagementStatus: 'disputed',
+      note,
+      idempotencyKey: key,
+    })
+    const kind = mutationResult(result)
+    if (kind !== 'ok' || !result.ok) return kind
+    revisionRef.current = result.data.case.revision
+    await refreshDispute()
+    const status = result.data.engagement?.status
+    const success = action === 'follow_up'
+      ? 'Follow-up recorded. The engagement stays Disputed and the case is not closed. This is not a completed resolution.'
+      : status === 'delivered'
+        ? 'The engagement is now Delivered. The client can review it again. Payments and invoices were not changed.'
+        : 'The engagement is now In progress. The provider can continue and deliver again. Payments, invoices, and earlier deliveries were not changed.'
+    setView((current) => current.name === 'dispute' && current.id === record.case.id ? { ...current, notice: success } : current)
+    return 'ok' as const
+  }
+
   async function actNote(record: DisputeCaseDetail | null, body: string, key: string) {
     if (!record) return 'rejected' as const
     const result = await records.addDisputeCaseNote(record.case.id, { body, idempotencyKey: key })
@@ -333,6 +356,7 @@ export function AdminShell({
           onAssign={(staffMemberId, note, key) => actAssignment(view.record, staffMemberId, note, key)}
           onUnassign={(note, key) => actAssignment(view.record, null, note, key)}
           onNote={(body, key) => actNote(view.record, body, key)}
+          onResolve={(action, note, key) => actResolution(view.record, action, note, key)}
           onRefresh={() => refreshDispute()}
           assignees={assignees}
         />

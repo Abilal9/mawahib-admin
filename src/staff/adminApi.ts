@@ -1,4 +1,4 @@
-import type { AccountStatusChange, AdminRecords, AdminResult, DisputeAssignmentInput, DisputeMutation, DisputeStatusInput, MarketplaceQuery, OperationsOverview, ReportTotals, StaffUserDetail } from './adminTypes'
+import type { AccountStatusChange, AdminRecords, AdminResult, DisputeAssignmentInput, DisputeMutation, DisputeResolutionInput, DisputeStatusInput, MarketplaceQuery, OperationsOverview, ReportTotals, StaffUserDetail } from './adminTypes'
 
 export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Promise<string | null>): AdminRecords {
   const base = apiBaseUrl.replace(/\/$/, '')
@@ -104,6 +104,9 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
     },
     addDisputeCaseNote(id, input) {
       return post(`/admin/dispute-cases/${encodeURIComponent(id)}/notes`, input)
+    },
+    resolveDisputeCase(id, input: DisputeResolutionInput) {
+      return post<DisputeMutation>(`/admin/dispute-cases/${encodeURIComponent(id)}/resolution`, input)
     },
     operations() {
       return get<OperationsOverview>('/admin/operations')

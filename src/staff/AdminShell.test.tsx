@@ -83,6 +83,9 @@ function records(partial: Partial<AdminRecords> = {}): AdminRecords {
     async addDisputeCaseNote() {
       return { ok: false as const, kind: 'conflict' as const }
     },
+    async resolveDisputeCase() {
+      return { ok: false as const, kind: 'conflict' as const }
+    },
     async operations() {
       return { ok: true, data: operationsOverview() }
     },
@@ -461,7 +464,105 @@ describe('AdminShell', () => {
     expect(screen.queryByRole('button', { name: 'Start review' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Add note' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Close case' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Return to client review' })).toBeNull()
     expect(screen.getByText('Synthetic dispute note')).toBeTruthy()
+  })
+
+  it('requires confirmation before returning a dispute to client review', async () => {
+    const resolve = vi.fn()
+    render(
+      <AdminShell
+        records={records({
+          async disputeCase() {
+            return {
+              ok: true,
+              data: {
+                ...caseDetail(),
+                resolutions: {
+                  return_to_client_review: { available: true, reason: null },
+                  further_work: { available: false, reason: 'Further work is only available when this dispute started after a delivery.' },
+                  follow_up: { available: true, reason: null },
+                },
+                viewer: {
+                  canAct: true,
+                  blockedReason: null,
+                  allowedActions: ['note', 'close', 'return_to_client_review', 'follow_up'],
+                },
+              },
+            }
+          },
+          async resolveDisputeCase(_id, input) {
+            resolve(input)
+            return {
+              ok: true as const,
+              data: {
+                outcome: 'changed' as const,
+                case: { id: disputeId, status: 'closed' as const, revision: 1, closedOutcome: 'returned_for_client_review' as const },
+                engagement: { previousStatus: 'disputed', status: 'delivered' },
+                paymentsChanged: false as const,
+              },
+            }
+          },
+        })}
+        initialRoute={{ name: 'dispute', id: disputeId, returnTo: EMPTY_DISPUTES }}
+        onSignOut={() => undefined}
+      />,
+    )
+    expect(await screen.findByRole('heading', { name: 'Business resolution' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Administrative closure' })).toBeTruthy()
+    expect(screen.getByText('Further work agreed: Further work is only available when this dispute started after a delivery.')).toBeTruthy()
+    const confirm = 'I understand this returns the engagement to Delivered for the client to review. It does not accept the work, collect payment, release funds, or create an invoice.'
+    fireEvent.change(screen.getByLabelText('Return to client review note'), { target: { value: 'The delivery can be reviewed again.' } })
+    expect(screen.getAllByText(confirm)).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Return to client review' }))
+    expect(screen.getAllByText(confirm)).toHaveLength(2)
+    expect(resolve).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'I understand this returns the engagement to Delivered for the client to review. It does not accept the work, collect payment, release funds, or create an invoice.' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Return to client review' }))
+    expect(await screen.findByText('The engagement is now Delivered. The client can review it again. Payments and invoices were not changed.')).toBeTruthy()
+    expect(resolve).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'return_to_client_review',
+      expectedRevision: 0,
+      expectedEngagementStatus: 'disputed',
+      note: 'The delivery can be reviewed again.',
+    }))
+  })
+
+  it('retries an uncertain follow-up with the same request key', async () => {
+    const keys: string[] = []
+    render(
+      <AdminShell
+        records={records({
+          async disputeCase() {
+            return {
+              ok: true,
+              data: {
+                ...caseDetail(),
+                resolutions: {
+                  return_to_client_review: { available: false, reason: null },
+                  further_work: { available: false, reason: null },
+                  follow_up: { available: true, reason: null },
+                },
+                viewer: { canAct: true, blockedReason: null, allowedActions: ['note', 'follow_up'] },
+              },
+            }
+          },
+          async resolveDisputeCase(_id, input) {
+            keys.push(input.idempotencyKey)
+            return { ok: false as const, kind: 'uncertain' as const }
+          },
+        })}
+        initialRoute={{ name: 'dispute', id: disputeId, returnTo: EMPTY_DISPUTES }}
+        onSignOut={() => undefined}
+      />,
+    )
+    fireEvent.change(await screen.findByLabelText('Follow-up still required note'), { target: { value: 'Waiting for the file.' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'I understand this keeps the engagement Disputed and does not close the case. It is not a completed resolution.' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Record follow-up' }))
+    expect(await screen.findByText('The result is uncertain. Try the action again when you are ready.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Record follow-up' }))
+    expect(keys).toHaveLength(2)
+    expect(keys[0]).toBe(keys[1])
   })
 
   it('does not call a revision conflict when review has no note', async () => {
