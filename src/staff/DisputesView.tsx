@@ -116,6 +116,7 @@ export function DisputeCaseDetailView({
   onAssign,
   onUnassign,
   onNote,
+  onRefresh,
   assignees,
 }: {
   record: DisputeCaseDetail | null
@@ -123,12 +124,13 @@ export function DisputeCaseDetailView({
   notice: string | null
   onOpenUser: (id: string) => void
   onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null>
-  onStartReview: (note: string, key: string) => Promise<'ok' | 'uncertain' | 'conflict'>
-  onClose: (outcome: DisputeCaseOutcome, note: string, key: string) => Promise<'ok' | 'uncertain' | 'conflict'>
-  onReopen: (note: string, key: string) => Promise<'ok' | 'uncertain' | 'conflict'>
-  onAssign: (staffMemberId: string, note: string, key: string) => Promise<'ok' | 'uncertain' | 'conflict'>
-  onUnassign: (note: string, key: string) => Promise<'ok' | 'uncertain' | 'conflict'>
-  onNote: (body: string, key: string) => Promise<'ok' | 'uncertain' | 'conflict'>
+  onStartReview: (note: string, key: string) => Promise<ActionResult>
+  onClose: (outcome: DisputeCaseOutcome, note: string, key: string) => Promise<ActionResult>
+  onReopen: (note: string, key: string) => Promise<ActionResult>
+  onAssign: (staffMemberId: string, note: string, key: string) => Promise<ActionResult>
+  onUnassign: (note: string, key: string) => Promise<ActionResult>
+  onNote: (body: string, key: string) => Promise<ActionResult>
+  onRefresh: () => Promise<void>
   assignees: Array<{ staffMemberId: string; label: string; isSelf: boolean; conflicted: boolean }>
 }) {
   if (phase === 'loading') return <LoadingIndicator compact label="Loading dispute case" />
@@ -186,87 +188,297 @@ export function DisputeCaseDetailView({
           </article>
         ))}
       </section>
-      <section className="demo-panel">
-        <h2>Assignment and notes</h2>
+      <section className="demo-panel case-form">
+        <h2>Assignment</h2>
         <p>{assignee ? `${assignee.label}${assignee.membershipStatus !== 'active' ? ' (no longer active)' : ''}${assignee.isSelf ? ' · Assigned to me' : ''}` : 'Unassigned'}</p>
+        <p className="section-note">Assignment is optional. Any operator who is not a participant in this engagement can start review, add a note, or close the case.</p>
+        {record.viewer.canAct ? <AssignmentForm record={record} assignees={assignees} onAssign={onAssign} onUnassign={onUnassign} onRefresh={onRefresh} /> : null}
+      </section>
+      <section className="demo-panel case-form">
+        <h2>Review</h2>
+        <p>Handling status: {STATUS_LABEL[record.case.status]}</p>
+        {record.viewer.canAct && record.viewer.allowedActions.includes('start_review') ? <ReviewForm onStartReview={onStartReview} onRefresh={onRefresh} /> : null}
+        {record.case.status === 'closed' && record.viewer.canAct ? <ReopenForm onReopen={onReopen} onRefresh={onRefresh} /> : null}
+      </section>
+      <section className="demo-panel case-form">
+        <h2>Internal notes</h2>
         {record.notes.length === 0 ? <p>No internal notes yet.</p> : record.notes.map((note) => (
           <p key={note.id}>{note.author.label} · {new Date(note.createdAt).toLocaleString()} · {note.body}</p>
         ))}
-        <h3>Action history</h3>
+        {record.viewer.canAct ? <NoteForm onNote={onNote} onRefresh={onRefresh} /> : null}
+      </section>
+      {record.viewer.canAct && record.viewer.allowedActions.includes('close') ? (
+        <section className="demo-panel case-form">
+          <h2>Close case</h2>
+          <p className="section-note">Closing this case does not change the engagement status or any payment.</p>
+          <CloseForm onClose={onClose} onRefresh={onRefresh} />
+        </section>
+      ) : null}
+      <section className="demo-panel">
+        <h2>History</h2>
         {record.history.length === 0 ? <p>No staff actions yet.</p> : record.history.map((event) => (
-          <p key={event.id}>{label(event.action)} · {event.actor.label} · {new Date(event.createdAt).toLocaleString()} · {event.previousStatus} → {event.resultingStatus} · {event.reason}</p>
+          <p key={event.id}>{label(event.action)} · {event.actor.label} · {new Date(event.createdAt).toLocaleString()} · {label(event.previousStatus)} → {label(event.resultingStatus)} · {event.reason}</p>
         ))}
       </section>
-      {record.viewer.canAct ? (
-        <CaseActions record={record} assignees={assignees} onStartReview={onStartReview} onClose={onClose} onReopen={onReopen} onAssign={onAssign} onUnassign={onUnassign} onNote={onNote} />
-      ) : <p>You are linked to a participant in this engagement.</p>}
+      {record.viewer.canAct ? null : <p>You are linked to a participant in this engagement.</p>}
     </div>
   )
 }
 
-function CaseActions({ record, assignees, onStartReview, onClose, onReopen, onAssign, onUnassign, onNote }: {
+type ActionResult = 'ok' | 'uncertain' | 'conflict' | 'rejected'
+
+function ActionFeedback({
+  message,
+  conflict,
+  onRefresh,
+}: {
+  message: string | null
+  conflict: boolean
+  onRefresh: () => Promise<void>
+}) {
+  if (!message && !conflict) return null
+  return (
+    <>
+      {message ? <p role="alert">{message}</p> : null}
+      {conflict ? <button type="button" className="secondary" onClick={() => void onRefresh()}>Refresh case</button> : null}
+    </>
+  )
+}
+
+function AssignmentForm({ record, assignees, onAssign, onUnassign, onRefresh }: {
   record: DisputeCaseDetail
   assignees: Array<{ staffMemberId: string; label: string; isSelf: boolean; conflicted: boolean }>
-  onStartReview: (note: string, key: string) => Promise<'ok' | 'uncertain' | 'conflict'>
-  onClose: (outcome: DisputeCaseOutcome, note: string, key: string) => Promise<'ok' | 'uncertain' | 'conflict'>
-  onReopen: (note: string, key: string) => Promise<'ok' | 'uncertain' | 'conflict'>
-  onAssign: (staffMemberId: string, note: string, key: string) => Promise<'ok' | 'uncertain' | 'conflict'>
-  onUnassign: (note: string, key: string) => Promise<'ok' | 'uncertain' | 'conflict'>
-  onNote: (body: string, key: string) => Promise<'ok' | 'uncertain' | 'conflict'>
+  onAssign: (staffMemberId: string, note: string, key: string) => Promise<ActionResult>
+  onUnassign: (note: string, key: string) => Promise<ActionResult>
+  onRefresh: () => Promise<void>
 }) {
-  const [note, setNote] = useState('')
-  const [outcome, setOutcome] = useState<DisputeCaseOutcome>('no_staff_action')
-  const [assignee, setAssignee] = useState('')
-  const [pending, setPending] = useState<{ kind: string; key: string; run: () => Promise<'ok' | 'uncertain' | 'conflict'> } | null>(null)
+  const [choice, setChoice] = useState('')
+  const [reason, setReason] = useState('')
   const [message, setMessage] = useState<string | null>(null)
-  async function run(kind: string, action: (key: string) => Promise<'ok' | 'uncertain' | 'conflict'>) {
-    const key = pending?.kind === kind ? pending.key : crypto.randomUUID()
-    const next = { kind, key, run: () => action(key) }
-    setPending(next)
-    const result = await action(key)
-    if (result === 'uncertain') {
-      setMessage('The result is uncertain. Retry uses the same request.')
+  const [conflict, setConflict] = useState(false)
+  const me = assignees.find((item) => item.isSelf && !item.conflicted)
+  async function submit(run: (key: string) => Promise<ActionResult>) {
+    if (!reason.trim()) {
+      setMessage('A reason is required for this assignment.')
+      setConflict(false)
       return
     }
-    setPending(null)
-    setMessage(result === 'conflict' ? 'This case changed. Refresh it before trying again.' : null)
-    if (result === 'ok') setNote('')
+    const result = await run(crypto.randomUUID())
+    if (result === 'conflict') {
+      setConflict(true)
+      setMessage('This case changed. Refresh the case before trying again.')
+      return
+    }
+    setConflict(false)
+    if (result === 'uncertain') {
+      setMessage('The result is uncertain. Try the action again when you are ready.')
+      return
+    }
+    if (result === 'rejected') {
+      setMessage('That assignment was not saved.')
+      return
+    }
+    setReason('')
+    setMessage(null)
   }
-  const allowed = new Set(record.viewer.allowedActions)
   return (
-    <section className="demo-panel">
-      <h2>Staff actions</h2>
-      {message ? <p role="alert">{message}</p> : null}
-      <label>Note<textarea value={note} onChange={(event) => setNote(event.target.value)} /></label>
-      {allowed.has('start_review') ? <button type="button" onClick={() => void run('review', (key) => onStartReview(note, key))}>Start review</button> : null}
-      {allowed.has('close') ? (
-        <>
-          <label>Outcome
-            <select value={outcome} onChange={(event) => setOutcome(event.target.value as DisputeCaseOutcome)}>
-              {OUTCOMES.map((item) => <option key={item} value={item}>{OUTCOME_LABEL[item]}</option>)}
-            </select>
-          </label>
-          <button type="button" onClick={() => void run('close', (key) => onClose(outcome, note, key))}>Close case</button>
-        </>
-      ) : null}
-      {allowed.has('reopen') ? <button type="button" onClick={() => void run('reopen', (key) => onReopen(note, key))}>Reopen case</button> : null}
-      {allowed.has('assign') ? (
-        <>
-          <label>Operator
-            <select value={assignee} onChange={(event) => setAssignee(event.target.value)}>
-              <option value="">Choose an operator</option>
-              {assignees.filter((item) => !item.conflicted).map((item) => (
-                <option key={item.staffMemberId} value={item.staffMemberId}>{item.label}{item.isSelf ? ' (you)' : ''}</option>
-              ))}
-            </select>
-          </label>
-          <button type="button" disabled={!assignee} onClick={() => void run('assign', (key) => onAssign(assignee, note, key))}>{record.assignment.assignee ? 'Reassign' : 'Assign'}</button>
-        </>
-      ) : null}
-      {allowed.has('unassign') ? <button type="button" onClick={() => void run('unassign', (key) => onUnassign(note, key))}>Unassign</button> : null}
-      {allowed.has('note') ? <button type="button" onClick={() => void run('note', (key) => onNote(note, key))}>Add note</button> : null}
-      {pending && message ? <button type="button" onClick={() => void run(pending.kind, () => pending.run())}>Retry</button> : null}
-    </section>
+    <>
+      <ActionFeedback message={message} conflict={conflict} onRefresh={async () => { setConflict(false); setMessage(null); await onRefresh() }} />
+      <label>Operator
+        <select value={choice} onChange={(event) => setChoice(event.target.value)}>
+          <option value="">Choose an operator</option>
+          {assignees.filter((item) => !item.conflicted).map((item) => (
+            <option key={item.staffMemberId} value={item.staffMemberId}>{item.label}{item.isSelf ? ' (you)' : ''}</option>
+          ))}
+        </select>
+      </label>
+      <label>Reason for this assignment
+        <textarea value={reason} onChange={(event) => setReason(event.target.value)} />
+      </label>
+      <div className="actions">
+        {me ? <button type="button" className="secondary" onClick={() => void submit((key) => onAssign(me.staffMemberId, reason, key))}>Assign to me</button> : null}
+        <button type="button" disabled={!choice} onClick={() => void submit((key) => onAssign(choice, reason, key))}>{record.assignment.assignee ? 'Reassign' : 'Assign'}</button>
+        {record.viewer.allowedActions.includes('unassign') ? <button type="button" className="secondary" onClick={() => void submit((key) => onUnassign(reason, key))}>Unassign</button> : null}
+      </div>
+    </>
+  )
+}
+
+function ReviewForm({ onStartReview, onRefresh }: {
+  onStartReview: (note: string, key: string) => Promise<ActionResult>
+  onRefresh: () => Promise<void>
+}) {
+  const [note, setNote] = useState('')
+  const [message, setMessage] = useState<string | null>(null)
+  const [conflict, setConflict] = useState(false)
+  async function submit() {
+    if (!note.trim()) {
+      setMessage('A note is required to start review.')
+      setConflict(false)
+      return
+    }
+    const result = await onStartReview(note, crypto.randomUUID())
+    if (result === 'conflict') {
+      setConflict(true)
+      setMessage('This case changed. Refresh the case before trying again.')
+      return
+    }
+    setConflict(false)
+    if (result === 'ok') {
+      setNote('')
+      setMessage(null)
+      return
+    }
+    setMessage(result === 'uncertain' ? 'The result is uncertain. Try the action again when you are ready.' : 'Review was not started.')
+  }
+  return (
+    <>
+      <p className="section-note">Assignment is not required before review.</p>
+      <ActionFeedback message={message} conflict={conflict} onRefresh={async () => { setConflict(false); setMessage(null); await onRefresh() }} />
+      <label>Review note
+        <textarea value={note} onChange={(event) => setNote(event.target.value)} />
+      </label>
+      <div className="actions">
+        <button type="button" onClick={() => void submit()}>Start review</button>
+      </div>
+    </>
+  )
+}
+
+function NoteForm({ onNote, onRefresh }: {
+  onNote: (body: string, key: string) => Promise<ActionResult>
+  onRefresh: () => Promise<void>
+}) {
+  const [body, setBody] = useState('')
+  const [message, setMessage] = useState<string | null>(null)
+  const [conflict, setConflict] = useState(false)
+  async function submit() {
+    if (!body.trim()) {
+      setMessage('Write the note before adding it.')
+      setConflict(false)
+      return
+    }
+    const result = await onNote(body, crypto.randomUUID())
+    if (result === 'conflict') {
+      setConflict(true)
+      setMessage('This case changed. Refresh the case before trying again.')
+      return
+    }
+    setConflict(false)
+    if (result === 'ok') {
+      setBody('')
+      setMessage(null)
+      return
+    }
+    setMessage(result === 'uncertain' ? 'The result is uncertain. Try the action again when you are ready.' : 'The note was not saved.')
+  }
+  return (
+    <>
+      <ActionFeedback message={message} conflict={conflict} onRefresh={async () => { setConflict(false); setMessage(null); await onRefresh() }} />
+      <label>Internal note
+        <textarea value={body} onChange={(event) => setBody(event.target.value)} />
+      </label>
+      <div className="actions">
+        <button type="button" onClick={() => void submit()}>Add note</button>
+      </div>
+    </>
+  )
+}
+
+function CloseForm({ onClose, onRefresh }: {
+  onClose: (outcome: DisputeCaseOutcome, note: string, key: string) => Promise<ActionResult>
+  onRefresh: () => Promise<void>
+}) {
+  const [outcome, setOutcome] = useState<DisputeCaseOutcome>('no_staff_action')
+  const [note, setNote] = useState('')
+  const [confirmed, setConfirmed] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const [conflict, setConflict] = useState(false)
+  async function submit() {
+    if (!note.trim()) {
+      setMessage('A closing note is required.')
+      setConflict(false)
+      return
+    }
+    if (!confirmed) {
+      setMessage('Confirm that closing the case leaves the engagement and payments unchanged.')
+      setConflict(false)
+      return
+    }
+    const result = await onClose(outcome, note, crypto.randomUUID())
+    if (result === 'conflict') {
+      setConflict(true)
+      setMessage('This case changed. Refresh the case before trying again.')
+      return
+    }
+    setConflict(false)
+    if (result === 'ok') {
+      setNote('')
+      setConfirmed(false)
+      setMessage(null)
+      return
+    }
+    setMessage(result === 'uncertain' ? 'The result is uncertain. Try the action again when you are ready.' : 'The case was not closed.')
+  }
+  return (
+    <>
+      <ActionFeedback message={message} conflict={conflict} onRefresh={async () => { setConflict(false); setMessage(null); await onRefresh() }} />
+      <label>Outcome
+        <select value={outcome} onChange={(event) => setOutcome(event.target.value as DisputeCaseOutcome)}>
+          {OUTCOMES.map((item) => <option key={item} value={item}>{OUTCOME_LABEL[item]}</option>)}
+        </select>
+      </label>
+      <label>Closing note
+        <textarea value={note} onChange={(event) => setNote(event.target.value)} />
+      </label>
+      <label className="confirm-line">
+        <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
+        I understand this does not change the engagement status or any payment.
+      </label>
+      <div className="actions">
+        <button type="button" onClick={() => void submit()}>Close case</button>
+      </div>
+    </>
+  )
+}
+
+function ReopenForm({ onReopen, onRefresh }: {
+  onReopen: (note: string, key: string) => Promise<ActionResult>
+  onRefresh: () => Promise<void>
+}) {
+  const [note, setNote] = useState('')
+  const [message, setMessage] = useState<string | null>(null)
+  const [conflict, setConflict] = useState(false)
+  async function submit() {
+    if (!note.trim()) {
+      setMessage('A reason is required to reopen the case.')
+      setConflict(false)
+      return
+    }
+    const result = await onReopen(note, crypto.randomUUID())
+    if (result === 'conflict') {
+      setConflict(true)
+      setMessage('This case changed. Refresh the case before trying again.')
+      return
+    }
+    setConflict(false)
+    if (result === 'ok') {
+      setNote('')
+      setMessage(null)
+      return
+    }
+    setMessage(result === 'uncertain' ? 'The result is uncertain. Try the action again when you are ready.' : 'The case was not reopened.')
+  }
+  return (
+    <>
+      <ActionFeedback message={message} conflict={conflict} onRefresh={async () => { setConflict(false); setMessage(null); await onRefresh() }} />
+      <label>Reason to reopen
+        <textarea value={note} onChange={(event) => setNote(event.target.value)} />
+      </label>
+      <div className="actions">
+        <button type="button" className="secondary" onClick={() => void submit()}>Reopen case</button>
+      </div>
+    </>
   )
 }
 

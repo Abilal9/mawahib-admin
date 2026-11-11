@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AdminShell } from './AdminShell'
 import { EMPTY_DISPUTES, EMPTY_MARKETPLACE, type AdminRecords, type OperationsOverview, type StaffUserSummary } from './adminTypes'
 import { OPERATIONS_POLL_MS } from './OperationsView'
@@ -442,6 +442,114 @@ describe('AdminShell', () => {
     render(<Session />)
     expect(await screen.findByText('Staff access is not active for this account. Contact your administrator.')).toBeTruthy()
     expect(screen.queryByText('ada.preview@example.com')).toBeNull()
+  })
+
+  it('does not call a revision conflict when review has no note', async () => {
+    const status = vi.fn()
+    render(
+      <AdminShell
+        records={records({
+          async disputeCase() {
+            return {
+              ok: true,
+              data: {
+                ...caseDetail(),
+                viewer: { canAct: true, blockedReason: null, allowedActions: ['start_review', 'close', 'assign', 'note'] },
+              },
+            }
+          },
+          async setDisputeCaseStatus(_id, input) {
+            status(input)
+            return { ok: false, kind: 'invalid' }
+          },
+        })}
+        initialRoute={{ name: 'dispute', id: disputeId, returnTo: EMPTY_DISPUTES }}
+        onSignOut={() => undefined}
+      />,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Start review' }))
+    expect(await screen.findByText('A note is required to start review.')).toBeTruthy()
+    expect(status).not.toHaveBeenCalled()
+    expect(screen.queryByText('This case changed. Refresh the case before trying again.')).toBeNull()
+  })
+
+  it('refreshes a conflicting case without sending the action again', async () => {
+    const posts: string[] = []
+    let reads = 0
+    render(
+      <AdminShell
+        records={records({
+          async disputeCase() {
+            reads += 1
+            return {
+              ok: true,
+              data: {
+                ...caseDetail(),
+                viewer: { canAct: true, blockedReason: null, allowedActions: ['start_review', 'close', 'note'] },
+              },
+            }
+          },
+          async setDisputeCaseStatus() {
+            posts.push('status')
+            return { ok: false, kind: 'conflict' }
+          },
+        })}
+        initialRoute={{ name: 'dispute', id: disputeId, returnTo: EMPTY_DISPUTES }}
+        onSignOut={() => undefined}
+      />,
+    )
+    fireEvent.change(await screen.findByLabelText('Review note'), { target: { value: 'Looking at the delivery' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Start review' }))
+    expect(await screen.findByRole('button', { name: 'Refresh case' })).toBeTruthy()
+    expect(screen.getByLabelText('Review note')).toHaveProperty('value', 'Looking at the delivery')
+    const sent = posts.length
+    const seen = reads
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh case' }))
+    await screen.findByText('Assignment is not required before review.')
+    expect(posts.length).toBe(sent)
+    expect(reads).toBeGreaterThan(seen)
+  })
+
+  it('sends the saved revision with the next case action', async () => {
+    const seen: number[] = []
+    let revision = 0
+    let status: 'open' | 'in_review' | 'closed' = 'open'
+    render(
+      <AdminShell
+        records={records({
+          async disputeCase() {
+            return {
+              ok: true,
+              data: {
+                ...caseDetail(),
+                case: { ...caseDetail().case, revision, status, engagementStillDisputed: true },
+                viewer: {
+                  canAct: true,
+                  blockedReason: null,
+                  allowedActions: status === 'open' ? ['start_review', 'close', 'note'] : status === 'closed' ? ['reopen', 'note'] : ['close', 'note'],
+                },
+              },
+            }
+          },
+          async setDisputeCaseStatus(_id, input) {
+            seen.push(input.expectedRevision)
+            if (input.expectedRevision !== revision) return { ok: false, kind: 'conflict' }
+            revision += 1
+            status = input.action === 'close' ? 'closed' : 'in_review'
+            return { ok: true, data: { outcome: 'changed', case: { id: disputeId, status, revision } } }
+          },
+        })}
+        initialRoute={{ name: 'dispute', id: disputeId, returnTo: EMPTY_DISPUTES }}
+        onSignOut={() => undefined}
+      />,
+    )
+    fireEvent.change(await screen.findByLabelText('Review note'), { target: { value: 'Looking at the delivery' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Start review' }))
+    fireEvent.change(await screen.findByLabelText('Closing note'), { target: { value: 'No payment change' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: /does not change the engagement status/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close case' }))
+    await screen.findByText('Case closed. The engagement is still disputed.')
+    expect(seen).toEqual([0, 1])
   })
 
   it('renders a dispute note as text', async () => {

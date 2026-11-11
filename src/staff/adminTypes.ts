@@ -198,7 +198,7 @@ export type AccountStatusChange = {
 
 export type AdminResult<T> =
   | { ok: true; data: T }
-  | { ok: false; kind: 'denied' | 'expired' | 'unavailable' | 'not-found' | 'conflict' | 'ineligible' | 'uncertain' }
+  | { ok: false; kind: 'denied' | 'expired' | 'unavailable' | 'not-found' | 'conflict' | 'invalid' | 'ineligible' | 'uncertain' }
 
 export type AdminRecords = {
   searchUsers(query: string, cursor: string | null): Promise<AdminResult<StaffUserPage>>

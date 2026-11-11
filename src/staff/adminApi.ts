@@ -220,6 +220,7 @@ async function classify<T>(response: Response): Promise<AdminResult<T>> {
     }
     return { ok: false, kind: 'denied' }
   }
+  if (response.status === 400) return { ok: false, kind: 'invalid' }
   if (response.status === 404) return { ok: false, kind: 'not-found' }
   if (response.status === 409) return { ok: false, kind: 'conflict' }
   if (!response.ok) return { ok: false, kind: 'unavailable' }

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
-import type { AccountActionRecord, AdminRecords, AdminResult, AdminRoute, DisputeCaseDetail, DisputeCaseListItem, DisputeCaseQuery, OperationsOverview, ReportListQuery, ReportTotals, StaffReportDetail, StaffReportSummary, StaffUserDetail, StaffUserSummary } from './adminTypes'
+import type { AccountActionRecord, AdminRecords, AdminResult, AdminRoute, DisputeCaseDetail, DisputeCaseListItem, DisputeCaseQuery, DisputeMutation, OperationsOverview, ReportListQuery, ReportTotals, StaffReportDetail, StaffReportSummary, StaffUserDetail, StaffUserSummary } from './adminTypes'
 import { DisputeCaseDetailView, DisputeCaseList } from './DisputesView'
 import { EMPTY_DISPUTES } from './adminTypes'
 import { OPERATIONS_POLL_MS, OperationsView } from './OperationsView'
@@ -51,6 +51,7 @@ export function AdminShell({
   const [query, setQuery] = useState(initialRoute.name === 'users' ? initialRoute.query : '')
   const [reload, setReload] = useState(0)
   const requestId = useRef(0)
+  const revisionRef = useRef<number | null>(null)
   const searchId = useId()
 
   useEffect(() => {
@@ -108,7 +109,11 @@ export function AdminShell({
         phase: 'loading',
       })
     } else if (route.name === 'dispute') {
-      setView({ name: 'dispute', id: route.id, returnTo: route.returnTo, record: null, phase: 'loading', notice: null })
+      setView((current) => (
+        current.name === 'dispute' && current.id === route.id && current.record
+          ? current
+          : { name: 'dispute', id: route.id, returnTo: route.returnTo, record: null, phase: 'loading', notice: null }
+      ))
     } else {
       setView({ name: 'loading' })
     }
@@ -160,38 +165,80 @@ export function AdminShell({
     setRoute(next)
   }
 
+  if (view.name === 'dispute' && view.record) revisionRef.current = view.record.case.revision
+
+  async function refreshDispute() {
+    if (route.name !== 'dispute') return
+    const result = await records.disputeCase(route.id)
+    if (!result.ok) {
+      if ((result.kind === 'denied' || result.kind === 'expired') && onAccessDenied) onAccessDenied()
+      return
+    }
+    revisionRef.current = result.data.case.revision
+    setView((current) => (
+      current.name === 'dispute' && current.id === result.data.case.id
+        ? { ...current, record: result.data, phase: 'ready', notice: null }
+        : current
+    ))
+  }
+
+  function mutationResult(result: AdminResult<DisputeMutation>): 'ok' | 'uncertain' | 'conflict' | 'rejected' {
+    if (result.ok) return 'ok'
+    if (result.kind === 'uncertain') return 'uncertain'
+    if (result.kind === 'conflict') return 'conflict'
+    return 'rejected'
+  }
+
   async function actDispute(record: DisputeCaseDetail | null, action: 'start_review' | 'close' | 'reopen', note: string, key: string, outcome?: DisputeCaseDetail['case']['closedOutcome']) {
-    if (!record) return 'conflict' as const
+    if (!record) return 'rejected' as const
     const result = await records.setDisputeCaseStatus(record.case.id, {
       action,
-      expectedRevision: record.case.revision,
+      expectedRevision: revisionRef.current ?? record.case.revision,
       note,
       ...(action === 'close' && outcome ? { outcome } : {}),
       idempotencyKey: key,
     })
-    if (!result.ok) return result.kind === 'uncertain' ? 'uncertain' as const : 'conflict' as const
-    setReload((value) => value + 1)
+    const kind = mutationResult(result)
+    if (kind !== 'ok' || !result.ok) return kind
+    revisionRef.current = result.data.case.revision
+    setView((current) => {
+      if (current.name !== 'dispute' || !current.record || current.record.case.id !== result.data.case.id) return current
+      return {
+        ...current,
+        record: {
+          ...current.record,
+          case: {
+            ...current.record.case,
+            status: result.data.case.status,
+            revision: result.data.case.revision,
+          },
+        },
+      }
+    })
+    await refreshDispute()
     return 'ok' as const
   }
 
   async function actAssignment(record: DisputeCaseDetail | null, assigneeStaffMemberId: string | null, note: string, key: string) {
-    if (!record) return 'conflict' as const
+    if (!record) return 'rejected' as const
     const result = await records.setDisputeCaseAssignment(record.case.id, {
       assigneeStaffMemberId,
-      expectedRevision: record.case.revision,
+      expectedRevision: revisionRef.current ?? record.case.revision,
       note,
       idempotencyKey: key,
     })
-    if (!result.ok) return result.kind === 'uncertain' ? 'uncertain' as const : 'conflict' as const
-    setReload((value) => value + 1)
+    const kind = mutationResult(result)
+    if (kind !== 'ok' || !result.ok) return kind
+    revisionRef.current = result.data.case.revision
+    await refreshDispute()
     return 'ok' as const
   }
 
   async function actNote(record: DisputeCaseDetail | null, body: string, key: string) {
-    if (!record) return 'conflict' as const
+    if (!record) return 'rejected' as const
     const result = await records.addDisputeCaseNote(record.case.id, { body, idempotencyKey: key })
-    if (!result.ok) return result.kind === 'uncertain' ? 'uncertain' as const : 'conflict' as const
-    setReload((value) => value + 1)
+    if (!result.ok) return result.kind === 'uncertain' ? 'uncertain' as const : result.kind === 'conflict' ? 'conflict' as const : 'rejected' as const
+    await refreshDispute()
     return 'ok' as const
   }
 
@@ -286,6 +333,7 @@ export function AdminShell({
           onAssign={(staffMemberId, note, key) => actAssignment(view.record, staffMemberId, note, key)}
           onUnassign={(note, key) => actAssignment(view.record, null, note, key)}
           onNote={(body, key) => actNote(view.record, body, key)}
+          onRefresh={() => refreshDispute()}
           assignees={assignees}
         />
       ) : null}
