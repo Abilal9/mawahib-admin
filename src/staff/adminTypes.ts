@@ -158,7 +158,7 @@ export type StaffReportDetail = {
   targetCounts: TargetReportCounts | null
   target: Record<string, unknown>
   contentModeration: {
-    kind: 'post' | 'comment' | 'review'
+    kind: 'post' | 'comment' | 'review' | 'job' | 'service'
     targetId: string
     postId?: string
     hidden: boolean
@@ -175,6 +175,9 @@ export type StaffReportDetail = {
     service?: { id: string; title: string } | null
     publicEligible?: { count: number; average: number | null }
     hiddenReviewCount?: number
+    title?: string
+    businessStatus?: string
+    owner?: { id: string; displayName: string; accountStatus: string; deleted: boolean }
   } | null
   history: Array<{ id: string; action: string; actorLabel: string | null; note: string | null; createdAt: string }>
 }
@@ -260,7 +263,7 @@ export type AdminRecords = {
     input: { status: 'open' | 'resolved' | 'dismissed'; expectedStatus: 'open' | 'resolved' | 'dismissed'; note: string },
   ): Promise<AdminResult<{ id: string; status: string }>>
   setContentVisibility(
-    kind: 'post' | 'comment' | 'review',
+    kind: 'post' | 'comment' | 'review' | 'job' | 'service',
     id: string,
     input: { hidden: boolean; expectedVersion: number; reason: string },
   ): Promise<AdminResult<{ outcome: 'changed' | 'unchanged'; hidden: boolean; hiddenAt: string | null; version: number }>>

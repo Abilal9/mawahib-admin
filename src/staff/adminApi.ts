@@ -147,7 +147,11 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
         ? `/admin/posts/${encodeURIComponent(id)}/moderation`
         : kind === 'comment'
           ? `/admin/post-comments/${encodeURIComponent(id)}/moderation`
-          : `/admin/engagement-reviews/${encodeURIComponent(id)}/moderation`
+          : kind === 'review'
+            ? `/admin/engagement-reviews/${encodeURIComponent(id)}/moderation`
+            : kind === 'job'
+              ? `/admin/job-listings/${encodeURIComponent(id)}/moderation`
+              : `/admin/service-offerings/${encodeURIComponent(id)}/moderation`
       try {
         const response = await send(path, {
           method: 'POST',

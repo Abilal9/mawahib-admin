@@ -303,6 +303,7 @@ export function ReportDetail({
       </section>
       <ContentVisibility report={report} records={records} onChanged={onChanged} />
       <ReviewVisibility report={report} records={records} onChanged={onChanged} />
+      <ListingVisibility report={report} records={records} onChanged={onChanged} />
       <section className="report-panel">
         <h2>Report actions</h2>
         <form onSubmit={(event) => event.preventDefault()}>
@@ -404,6 +405,83 @@ function ReviewVisibility({
       {moderation.history.length === 0 ? <p>No visibility changes yet.</p> : (
         <ol className="report-history">
           {moderation.history.map((event) => (
+            <li key={event.id}>
+              <p><strong>{labelAction(event.action)}</strong> · {event.actorLabel ?? 'Staff operator'} · {formatWhen(event.createdAt)}</p>
+              {event.reason ? <p className="report-text">{event.reason}</p> : null}
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  )
+}
+
+function ListingVisibility({
+  report,
+  records,
+  onChanged,
+}: {
+  report: StaffReportDetail
+  records: AdminRecords
+  onChanged: () => void
+}) {
+  const moderation = report.contentModeration
+  const [reason, setReason] = useState('')
+  const [confirmed, setConfirmed] = useState(false)
+  const [pending, setPending] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  if (!moderation || (moderation.kind !== 'job' && moderation.kind !== 'service')) return null
+  const current = moderation
+  const nextHidden = !current.hidden
+  const noun = current.kind === 'job' ? 'job' : 'service'
+  const label = current.hidden ? `Restore ${noun}` : `Hide ${noun}`
+  const owner = current.owner
+  async function submit() {
+    const text = reason.trim()
+    if (pending || !confirmed || text.length < 1 || text.length > 500) return
+    setPending(true)
+    setNotice(null)
+    const result = await records.setContentVisibility(current.kind, current.targetId, {
+      hidden: nextHidden,
+      expectedVersion: current.version,
+      reason: text,
+    })
+    setPending(false)
+    setNotice(moderationNotice(result))
+    if (result.ok && result.data.outcome === 'changed') {
+      setReason('')
+      setConfirmed(false)
+    }
+    if (shouldRefreshModeration(result)) onChanged()
+  }
+  return (
+    <section className="report-panel">
+      <h2>{current.kind === 'job' ? 'Job visibility' : 'Service visibility'}</h2>
+      <p>Listing: {current.title || 'Untitled'}</p>
+      <p>Owner: {owner?.displayName ?? 'Unavailable'} · {owner?.deleted ? 'Deleted' : owner?.accountStatus ?? 'Unknown'}</p>
+      <p>Business status: {(current.businessStatus ?? 'unknown').replaceAll('_', ' ')}</p>
+      <p>Staff visibility: {current.hidden ? 'Hidden by Mawahib' : 'Not hidden'}</p>
+      {current.deleted ? <p>This listing is deleted. Restoring the staff restriction does not bring it back.</p> : null}
+      <p className="quiet-note">Hiding or restoring changes staff visibility only. It does not change the business status, existing applications, requests, engagements, payments, invoices, or this report.</p>
+      <form onSubmit={(event) => event.preventDefault()}>
+        <label htmlFor="listing-reason">Reason for this visibility change</label>
+        <textarea id="listing-reason" value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} />
+        <label className="content-confirm">
+          <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
+          <span>{nextHidden
+            ? `I understand this hides the ${noun} from public discovery and blocks new applications or requests. Existing applications, requests, and purchased work remain.`
+            : `I understand this clears only the staff restriction. The ${noun} is public again only if its business status, deletion, and owner eligibility already allow it. Existing work remains.`}</span>
+        </label>
+        <button type="button" disabled={pending || !confirmed || reason.trim().length < 1 || (current.deleted && nextHidden)} aria-busy={pending} onClick={() => void submit()}>
+          {pending ? <ButtonSpinner /> : null}
+          {label}
+        </button>
+      </form>
+      {notice ? <p role="alert">{notice}</p> : null}
+      <h3>Moderation history</h3>
+      {current.history.length === 0 ? <p>No visibility changes yet.</p> : (
+        <ol className="report-history">
+          {current.history.map((event) => (
             <li key={event.id}>
               <p><strong>{labelAction(event.action)}</strong> · {event.actorLabel ?? 'Staff operator'} · {formatWhen(event.createdAt)}</p>
               {event.reason ? <p className="report-text">{event.reason}</p> : null}
@@ -529,9 +607,23 @@ function ContentPanel({ report }: { report: StaffReportDetail }) {
     )
   }
   const job = objectField(target, 'job')
-  if (job) return <p>Job: {textField(job, 'title') || 'Untitled'} · {state === 'deleted' ? 'Deleted' : textField(job, 'status')}</p>
+  if (job) {
+    return (
+      <>
+        <p>Job: {textField(job, 'title') || 'Untitled'} · Business status: {state === 'deleted' ? 'Deleted' : textField(job, 'status')}</p>
+        <p>Staff visibility: {flagField(job, 'staffHidden') ? 'Hidden by Mawahib' : 'Not hidden'}</p>
+      </>
+    )
+  }
   const service = objectField(target, 'service')
-  if (service) return <p>Service: {textField(service, 'title') || 'Untitled'} · {state === 'deleted' ? 'Deleted' : textField(service, 'status')}</p>
+  if (service) {
+    return (
+      <>
+        <p>Service: {textField(service, 'title') || 'Untitled'} · Business status: {state === 'deleted' ? 'Deleted' : textField(service, 'status')}</p>
+        <p>Staff visibility: {flagField(service, 'staffHidden') ? 'Hidden by Mawahib' : 'Not hidden'}</p>
+      </>
+    )
+  }
   return <p>Target state: {state}</p>
 }
 
@@ -593,6 +685,11 @@ function objectField(value: object, key: string): object | null {
   return field && typeof field === 'object' ? field : null
 }
 
+function flagField(value: object, key: string): boolean {
+  if (!(key in value)) return false
+  return (value as Record<string, unknown>)[key] === true
+}
+
 function textField(value: object, key: string): string {
   if (!(key in value)) return ''
   const field = (value as Record<string, unknown>)[key]
@@ -622,6 +719,10 @@ function labelAction(value: string): string {
   if (value === 'open' || value === 'report_reopened') return 'Reopen'
   if (value === 'post_hidden' || value === 'comment_hidden' || value === 'review_hidden') return 'Hide content'
   if (value === 'post_restored' || value === 'comment_restored' || value === 'review_restored') return 'Restore content'
+  if (value === 'job_hidden') return 'Hide job'
+  if (value === 'job_restored') return 'Restore job'
+  if (value === 'service_hidden') return 'Hide service'
+  if (value === 'service_restored') return 'Restore service'
   return value
 }
 
