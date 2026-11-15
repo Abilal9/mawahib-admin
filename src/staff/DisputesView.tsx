@@ -172,7 +172,7 @@ export function DisputeCaseDetailView({
       <section className="demo-panel">
         <h2>Case summary</h2>
         <p>Handling status: {STATUS_LABEL[record.case.status]}</p>
-        <p>Engagement status: {record.engagement.closedByMawahib ? 'Closed by Mawahib' : label(record.engagement.status)}</p>
+        <p>Engagement status: {engagementWorkStatus(record.engagement.status, record.engagement.closedByMawahib)}</p>
         {record.case.status === 'closed' && record.case.engagementStillDisputed ? <p>Case closed. The engagement is still disputed.</p> : null}
         {record.case.closedOutcome ? <p>Outcome: {OUTCOME_LABEL[record.case.closedOutcome]}</p> : null}
         {record.case.closedNote ? <p>{record.case.closedNote}</p> : null}
@@ -186,7 +186,7 @@ export function DisputeCaseDetailView({
       <section className="demo-panel">
         <h2>Engagement</h2>
         <p>{record.engagement.title}</p>
-        <p>Current business status: {record.engagement.closedByMawahib ? 'Closed by Mawahib' : label(record.engagement.status)}{record.engagement.deleted ? ' · Deleted' : ''}</p>
+        <p>Current business status: {engagementWorkStatus(record.engagement.status, record.engagement.closedByMawahib)}{record.engagement.deleted ? ' · Deleted' : ''}</p>
         {record.related.job ? <p>Job: {record.related.job.title} · {label(record.related.job.status)}</p> : null}
         {record.related.service ? <p>Service: {record.related.service.title} · {label(record.related.service.status)}</p> : null}
         {record.related.application ? <p>Application: {label(record.related.application.status)}</p> : null}
@@ -196,7 +196,7 @@ export function DisputeCaseDetailView({
         <p>{record.dispute.reason ?? 'No dispute reason is recorded.'}</p>
         <h3>Engagement status history</h3>
         {record.engagementHistory.map((event) => (
-          <p key={event.id}>{event.fromStatus ? `${label(event.fromStatus)} → ` : ''}{label(event.toStatus)} · {event.by} · {new Date(event.at).toLocaleString()}{event.note ? ` · ${event.note}` : ''}</p>
+          <p key={event.id}>{engagementHistoryText(event)} · {event.by} · {new Date(event.at).toLocaleString()}</p>
         ))}
       </section>
       <section className="demo-panel">
@@ -240,7 +240,8 @@ export function DisputeCaseDetailView({
         <section className="demo-panel case-form">
           <h2>Business resolution</h2>
           <p className="section-note">These choices change the engagement only through a validated transition. Payments and invoices stay as they are.</p>
-          <p>Current engagement status: {label(record.engagement.status)}</p>
+          <p>Current engagement status: {engagementWorkStatus(record.engagement.status, record.engagement.closedByMawahib)}</p>
+          {record.engagement.closedByMawahib ? <p className="section-note">This work remains Closed by Mawahib. Reopening the case does not restart it.</p> : null}
           {RESOLUTION_ACTIONS.map((action) => {
             const choice = resolutionChoice(record, action)
             return choice.available
@@ -570,7 +571,7 @@ function ReopenForm({ onReopen, onRefresh }: {
   return (
     <>
       <ActionFeedback message={message} conflict={conflict} onRefresh={async () => { setConflict(false); setMessage(null); await onRefresh() }} />
-      <p className="section-note">Reopening this case does not put the engagement back into dispute or undo a previous resolution.</p>
+      <p className="section-note">Reopening this case does not restart the work. Work closed by Mawahib stays closed.</p>
       <label>Reason to reopen
         <textarea value={note} onChange={(event) => setNote(event.target.value)} />
       </label>
@@ -689,6 +690,20 @@ function person(party: { id: string; displayName: string; deleted: boolean } | n
 
 function label(value: string) {
   return value.replaceAll('_', ' ')
+}
+
+export function engagementWorkStatus(status: string, closedByMawahib?: boolean) {
+  if (closedByMawahib) return 'Closed by Mawahib'
+  if (status === 'cancelled') return 'Cancelled'
+  return label(status)
+}
+
+export function engagementHistoryText(event: { fromStatus: string | null; toStatus: string; note: string | null }) {
+  const staffClosed = event.fromStatus === 'disputed' && event.toStatus === 'cancelled'
+  const to = staffClosed ? 'Closed by Mawahib' : label(event.toStatus)
+  const from = event.fromStatus ? `${label(event.fromStatus)} → ` : ''
+  const note = !staffClosed && event.note ? ` · ${event.note}` : ''
+  return `${from}${to}${note}`
 }
 
 async function openInvoice(id: string, onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null>) {
