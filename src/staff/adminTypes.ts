@@ -277,7 +277,24 @@ export type AdminRecords = {
   engagements(query: MarketplaceQuery): Promise<AdminResult<MarketplacePage<StaffEngagementListItem>>>
   engagement(id: string): Promise<AdminResult<StaffEngagementDetail>>
   invoiceDocument(id: string): Promise<AdminResult<{ url: string; originalFileName: string; mimeType: string }>>
+  retryInvoice(id: string): Promise<InvoiceRetryResult>
 }
+
+export type InvoiceRetryResult =
+  | {
+      ok: true
+      invoice: {
+        id: string
+        invoiceNumber: string
+        status: string
+        hasDocument: boolean
+        issuedAt: string | null
+        total: string
+        currency: string
+        isTestDocument: boolean
+      }
+    }
+  | { ok: false; message: string }
 
 export type AdminRoute =
   | { name: 'home' }
@@ -413,6 +430,8 @@ export type StaffPaymentAttempt = {
     status: string
     simulated: boolean
     hasDocument: boolean
+    retryable: boolean
+    retryUnavailableReason: string | null
   } | null
 }
 

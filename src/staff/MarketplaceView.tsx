@@ -4,6 +4,7 @@ import type {
   MarketplaceTab,
   StaffApplicationDetail,
   StaffApplicationListItem,
+  InvoiceRetryResult,
   StaffEngagementDetail,
   StaffEngagementListItem,
   StaffJobDetail,
@@ -133,6 +134,7 @@ export function MarketplaceDetail({
   onOpenEngagements,
   onOpenDispute,
   onViewInvoice,
+  onRetryInvoice,
 }: {
   tab: MarketplaceTab
   record: StaffJobDetail | StaffServiceDetail | StaffApplicationDetail | StaffEngagementDetail | null
@@ -146,16 +148,17 @@ export function MarketplaceDetail({
   onOpenEngagements: (filter: { listingId?: string; serviceOfferingId?: string }) => void
   onOpenDispute: (id: string) => void
   onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null>
+  onRetryInvoice: (id: string) => Promise<InvoiceRetryResult>
 }) {
   if (phase === 'loading') return <LoadingIndicator compact label="Loading record" />
   if (phase === 'unavailable') return <p role="alert">This record is temporarily unavailable.</p>
   if (phase === 'denied') return <p role="alert">Staff access is not active for this account.</p>
   if (phase === 'expired') return <p role="alert">Your session has expired. Sign in again.</p>
   if (!record) return <p role="alert">That record is not available.</p>
-  if (tab === 'jobs' && 'employmentType' in record) return <JobDetail record={record} onOpenUser={onOpenUser} onOpenApplications={onOpenApplications} onOpenEngagements={onOpenEngagements} onViewInvoice={onViewInvoice} />
+  if (tab === 'jobs' && 'employmentType' in record) return <JobDetail record={record} onOpenUser={onOpenUser} onOpenApplications={onOpenApplications} onOpenEngagements={onOpenEngagements} onViewInvoice={onViewInvoice} onRetryInvoice={onRetryInvoice} />
   if (tab === 'services' && 'packageCount' in record) return <ServiceDetail record={record as StaffServiceDetail} onOpenUser={onOpenUser} onOpenEngagements={onOpenEngagements} />
   if (tab === 'applications' && 'applicant' in record) return <ApplicationDetail record={record as StaffApplicationDetail} onOpenUser={onOpenUser} onOpenJob={onOpenJob} onOpenEngagement={onOpenEngagement} />
-  if (tab === 'engagements' && 'source' in record) return <EngagementDetail record={record as StaffEngagementDetail} onOpenUser={onOpenUser} onOpenJob={onOpenJob} onOpenService={onOpenService} onOpenApplication={onOpenApplication} onOpenDispute={onOpenDispute} onViewInvoice={onViewInvoice} />
+  if (tab === 'engagements' && 'source' in record) return <EngagementDetail record={record as StaffEngagementDetail} onOpenUser={onOpenUser} onOpenJob={onOpenJob} onOpenService={onOpenService} onOpenApplication={onOpenApplication} onOpenDispute={onOpenDispute} onViewInvoice={onViewInvoice} onRetryInvoice={onRetryInvoice} />
   return <p role="alert">That record is not available.</p>
 }
 
@@ -399,7 +402,7 @@ function EngagementRow({ item, onOpenUser }: { item: StaffEngagementListItem; on
   )
 }
 
-function JobDetail({ record, onOpenUser, onOpenApplications, onOpenEngagements, onViewInvoice }: { record: StaffJobDetail; onOpenUser: (id: string) => void; onOpenApplications: (listingId: string) => void; onOpenEngagements: (filter: { listingId?: string }) => void; onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null> }) {
+function JobDetail({ record, onOpenUser, onOpenApplications, onOpenEngagements, onViewInvoice, onRetryInvoice }: { record: StaffJobDetail; onOpenUser: (id: string) => void; onOpenApplications: (listingId: string) => void; onOpenEngagements: (filter: { listingId?: string }) => void; onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null>; onRetryInvoice: (id: string) => Promise<InvoiceRetryResult> }) {
   return (
     <section className="demo-list">
       <p>{labelWord(record.status)} · {labelWord(record.employmentType)}{record.deletedAt ? ' · Deleted' : ''}</p>
@@ -413,7 +416,7 @@ function JobDetail({ record, onOpenUser, onOpenApplications, onOpenEngagements, 
         <article key={engagement.id} className="demo-panel">
           <p><strong>{engagement.title}</strong> · {labelWord(engagement.status)}{engagement.deleted ? ' · Deleted' : ''}</p>
           <p>Client: <Party party={engagement.client} onOpen={onOpenUser} /> · Provider: <Party party={engagement.provider} onOpen={onOpenUser} /></p>
-          <PaymentAttempts payments={engagement.payments} onViewInvoice={onViewInvoice} />
+          <PaymentAttempts payments={engagement.payments} onViewInvoice={onViewInvoice} onRetryInvoice={onRetryInvoice} />
         </article>
       ))}
     </section>
@@ -444,7 +447,7 @@ function ApplicationDetail({ record, onOpenUser, onOpenJob, onOpenEngagement }: 
   )
 }
 
-function EngagementDetail({ record, onOpenUser, onOpenJob, onOpenService, onOpenApplication, onOpenDispute, onViewInvoice }: { record: StaffEngagementDetail; onOpenUser: (id: string) => void; onOpenJob: (id: string) => void; onOpenService: (id: string) => void; onOpenApplication: (id: string) => void; onOpenDispute: (id: string) => void; onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null> }) {
+function EngagementDetail({ record, onOpenUser, onOpenJob, onOpenService, onOpenApplication, onOpenDispute, onViewInvoice, onRetryInvoice }: { record: StaffEngagementDetail; onOpenUser: (id: string) => void; onOpenJob: (id: string) => void; onOpenService: (id: string) => void; onOpenApplication: (id: string) => void; onOpenDispute: (id: string) => void; onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null>; onRetryInvoice: (id: string) => Promise<InvoiceRetryResult> }) {
   return (
     <section className="demo-list">
       <p>{labelWord(record.status)} · {labelWord(record.source)}{record.deletedAt ? ' · Deleted' : ''}</p>
@@ -455,37 +458,76 @@ function EngagementDetail({ record, onOpenUser, onOpenJob, onOpenService, onOpen
       {record.applicationId ? <p><button type="button" onClick={() => onOpenApplication(record.applicationId!)}>View application</button></p> : null}
       {record.disputeCaseId ? <p><button type="button" onClick={() => onOpenDispute(record.disputeCaseId!)}>View dispute</button></p> : null}
       <h2>Invoices</h2>
-      <PaymentAttempts payments={record.payments} onViewInvoice={onViewInvoice} />
+      <PaymentAttempts payments={record.payments} onViewInvoice={onViewInvoice} onRetryInvoice={onRetryInvoice} />
     </section>
   )
 }
 
-function PaymentAttempts({ payments, onViewInvoice }: { payments: StaffEngagementDetail['payments']; onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null> }) {
+function PaymentAttempts({ payments, onViewInvoice, onRetryInvoice }: { payments: StaffEngagementDetail['payments']; onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null>; onRetryInvoice: (id: string) => Promise<InvoiceRetryResult> }) {
   const [notice, setNotice] = useState<string | null>(null)
+  const [retryingId, setRetryingId] = useState<string | null>(null)
+  const [readyIds, setReadyIds] = useState<Record<string, { status: string; hasDocument: boolean; issuedAt: string | null }>>({})
   if (payments.length === 0) return <p>No invoice issued</p>
+
+  async function retry(id: string) {
+    if (retryingId) return
+    setNotice(null)
+    setRetryingId(id)
+    try {
+      const result = await onRetryInvoice(id)
+      if (!result.ok) {
+        setNotice(result.message)
+        return
+      }
+      setReadyIds((current) => ({
+        ...current,
+        [id]: {
+          status: result.invoice.status,
+          hasDocument: result.invoice.hasDocument,
+          issuedAt: result.invoice.issuedAt,
+        },
+      }))
+      setNotice(result.invoice.hasDocument ? 'Invoice ready.' : 'The invoice is still not ready.')
+    } finally {
+      setRetryingId(null)
+    }
+  }
+
   return (
     <div className="demo-list">
-      {payments.map((payment) => (
+      {payments.map((payment) => {
+        const invoice = payment.invoice
+          ? { ...payment.invoice, ...readyIds[payment.invoice.id] }
+          : null
+        const retryable = invoice?.retryable && !invoice.hasDocument
+        return (
         <article key={payment.id} className="demo-panel">
           <p>Payment {payment.amount} {payment.currency} · {labelWord(payment.status)}</p>
           {payment.simulated ? <p>Simulated — no real payment</p> : null}
-          {payment.invoice ? (
+          {invoice ? (
             <>
-              <p>Invoice {payment.invoice.invoiceNumber}</p>
-              <p>{payment.invoice.issuedAt ? `Issued ${new Date(payment.invoice.issuedAt).toLocaleDateString()}` : 'Issue date not recorded'}</p>
-              <p>{payment.invoice.amount} {payment.invoice.currency} · {labelWord(payment.invoice.status)}</p>
-              {payment.invoice.simulated ? <p>Simulated — no real payment</p> : null}
-              {payment.invoice.hasDocument ? (
+              <p>Invoice {invoice.invoiceNumber}</p>
+              <p>{invoice.issuedAt ? `Issued ${new Date(invoice.issuedAt).toLocaleDateString()}` : 'Issue date not recorded'}</p>
+              <p>{invoice.amount} {invoice.currency} · {labelWord(invoice.status)}</p>
+              {invoice.simulated ? <p>Simulated — no real payment</p> : null}
+              {invoice.hasDocument ? (
                 <p>
-                  <button type="button" onClick={() => void openInvoice(payment.invoice!.id, onViewInvoice, setNotice, false)}>View invoice</button>
+                  <button type="button" onClick={() => void openInvoice(invoice.id, onViewInvoice, setNotice, false)}>View invoice</button>
                   {' '}
-                  <button type="button" onClick={() => void openInvoice(payment.invoice!.id, onViewInvoice, setNotice, true)}>Download</button>
+                  <button type="button" onClick={() => void openInvoice(invoice.id, onViewInvoice, setNotice, true)}>Download</button>
                 </p>
-              ) : null}
+              ) : retryable ? (
+                <p>
+                  <button type="button" disabled={retryingId !== null} onClick={() => void retry(invoice.id)}>
+                    {retryingId === invoice.id ? 'Retrying…' : 'Retry invoice'}
+                  </button>
+                </p>
+              ) : invoice.retryUnavailableReason ? <p>{invoice.retryUnavailableReason}</p> : null}
             </>
           ) : <p>No invoice issued</p>}
         </article>
-      ))}
+        )
+      })}
       {notice ? <p role="alert">{notice}</p> : null}
     </div>
   )

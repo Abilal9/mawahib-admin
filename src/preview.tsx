@@ -381,6 +381,9 @@ function previewRecords(mode: string): AdminRecords {
     async invoiceDocument() {
       return { ok: false, kind: 'not-found' }
     },
+    async retryInvoice() {
+      return { ok: false, message: 'The invoice could not be retried.' }
+    },
   }
 }
 

@@ -1,4 +1,4 @@
-import type { AccountStatusChange, AdminRecords, AdminResult, DisputeAssignmentInput, DisputeMutation, DisputeResolutionInput, DisputeStatusInput, MarketplaceQuery, OperationsOverview, ReportTotals, StaffUserDetail } from './adminTypes'
+import type { AccountStatusChange, AdminRecords, AdminResult, DisputeAssignmentInput, DisputeMutation, DisputeResolutionInput, DisputeStatusInput, InvoiceRetryResult, MarketplaceQuery, OperationsOverview, ReportTotals, StaffUserDetail } from './adminTypes'
 
 export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Promise<string | null>): AdminRecords {
   const base = apiBaseUrl.replace(/\/$/, '')
@@ -193,6 +193,30 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
     },
     invoiceDocument(id) {
       return get<{ url: string; originalFileName: string; mimeType: string }>(`/admin/invoices/${encodeURIComponent(id)}/document`)
+    },
+    async retryInvoice(id) {
+      try {
+        const response = await send(`/admin/invoices/${encodeURIComponent(id)}/retry`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        })
+        if (response.ok) {
+          const invoice = (await response.json()) as Extract<InvoiceRetryResult, { ok: true }>['invoice']
+          return { ok: true as const, invoice }
+        }
+        let message = 'The invoice could not be retried.'
+        try {
+          const body = (await response.json()) as { message?: unknown }
+          if (typeof body.message === 'string' && body.message.trim()) message = body.message
+        } catch {
+          message = 'The invoice could not be retried.'
+        }
+        return { ok: false as const, message }
+      } catch (error) {
+        if (error instanceof MissingToken) return { ok: false as const, message: 'Sign in again to retry this invoice.' }
+        return { ok: false as const, message: 'The invoice could not be retried. Refresh the page before trying again.' }
+      }
     },
   }
 }

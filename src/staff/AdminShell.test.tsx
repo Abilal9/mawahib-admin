@@ -134,6 +134,9 @@ function records(partial: Partial<AdminRecords> = {}): AdminRecords {
     async invoiceDocument() {
       return { ok: false as const, kind: 'not-found' as const }
     },
+    async retryInvoice() {
+      return { ok: false as const, message: 'The invoice could not be retried.' }
+    },
     ...partial,
   }
 }

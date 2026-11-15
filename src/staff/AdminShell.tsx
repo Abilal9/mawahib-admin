@@ -409,6 +409,7 @@ export function AdminShell({
             const result = await records.invoiceDocument(id)
             return result.ok ? { url: result.data.url, originalFileName: result.data.originalFileName } : null
           }}
+          onRetryInvoice={(id) => records.retryInvoice(id)}
         />
       ) : null}
       {view.name === 'report' ? (

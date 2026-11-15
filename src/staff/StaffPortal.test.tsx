@@ -213,6 +213,8 @@ function engagementDetail(): StaffEngagementDetail {
         status: 'generated',
         simulated: true,
         hasDocument: true,
+        retryable: false,
+        retryUnavailableReason: null,
       },
     }],
   }
@@ -250,6 +252,9 @@ function detailRecords(engagement: StaffEngagementDetail): AdminRecords {
     },
     async engagement() {
       return { ok: true, data: engagement }
+    },
+    async retryInvoice() {
+      return { ok: false as const, message: 'The invoice could not be retried.' }
     },
     async invoiceDocument() {
       return {
