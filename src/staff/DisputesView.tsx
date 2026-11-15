@@ -9,6 +9,7 @@ import type {
   DisputeResolutionOption,
 } from './adminTypes'
 import { LoadingIndicator } from './LoadingIndicator'
+import { initiationFrom, type StaffClosureInitiation } from './staffClosureCopy'
 
 const STATUSES: DisputeCaseStatus[] = ['open', 'in_review', 'closed']
 const ASSIGNMENTS = ['unassigned', 'mine', 'others'] as const
@@ -151,7 +152,7 @@ export function DisputeCaseDetailView({
   onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null>
   onStartReview: (note: string, key: string) => Promise<ActionResult>
   onClose: (outcome: DisputeCaseOutcome, note: string, key: string) => Promise<ActionResult>
-  onCloseWork: (reason: string, key: string) => Promise<ActionResult>
+  onCloseWork: (reason: string, key: string, initiation: StaffClosureInitiation, financialFollowUpRequired: boolean) => Promise<ActionResult>
   onReopen: (note: string, key: string) => Promise<ActionResult>
   onAssign: (staffMemberId: string, note: string, key: string) => Promise<ActionResult>
   onUnassign: (note: string, key: string) => Promise<ActionResult>
@@ -253,7 +254,7 @@ export function DisputeCaseDetailView({
       {record.viewer.canAct && record.viewer.allowedActions.includes('close_work') ? (
         <section className="demo-panel case-form">
           <h2>Close work</h2>
-          <p className="section-note">This closes the disputed work as Closed by Mawahib. It is not client acceptance, a refund, or a payout. Payments and invoices stay unchanged. Closing the case alone does not do this.</p>
+          <p className="section-note">This closes the work as Closed by Mawahib. It is not client acceptance, a refund, or a payout. Payments and invoices stay unchanged. Closing the case alone does not do this.</p>
           <CloseWorkForm title={record.engagement.title} onCloseWork={onCloseWork} onRefresh={onRefresh} />
         </section>
       ) : null}
@@ -455,11 +456,14 @@ function NoteForm({ onNote, onRefresh }: {
 
 function CloseWorkForm({ title, onCloseWork, onRefresh }: {
   title: string
-  onCloseWork: (reason: string, key: string) => Promise<ActionResult>
+  onCloseWork: (reason: string, key: string, initiation: StaffClosureInitiation, financialFollowUpRequired: boolean) => Promise<ActionResult>
   onRefresh: () => Promise<void>
 }) {
   const [reason, setReason] = useState('')
   const [confirmed, setConfirmed] = useState(false)
+  const [category, setCategory] = useState<StaffClosureInitiation['category']>('staff_observation')
+  const [reference, setReference] = useState('')
+  const [followUpRequired, setFollowUpRequired] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [conflict, setConflict] = useState(false)
   const keys = useBoundRequestKey()
@@ -469,15 +473,23 @@ function CloseWorkForm({ title, onCloseWork, onRefresh }: {
       setConflict(false)
       return
     }
-    if (!confirmed) {
-      setMessage(`Confirm that “${title}” will be Closed by Mawahib. Payments and invoices stay unchanged.`)
+    const initiation = initiationFrom(category, reference)
+    if (!initiation) {
+      setMessage(category === 'report' ? 'Enter the existing report id.' : 'Enter a short support reference. Do not paste an email.')
       setConflict(false)
       return
     }
-    const result = await onCloseWork(reason, keys.keyFor(`close-work:${reason}`))
+    if (!confirmed) {
+      setMessage(`Confirm that “${title}” will be Closed by Mawahib. This ends the work and does not issue a refund or payout.`)
+      setConflict(false)
+      return
+    }
+    const result = await onCloseWork(reason, keys.keyFor(`close-work:${reason}:${category}:${followUpRequired}`), initiation, followUpRequired)
     finishStaffAction(result, keys, setConflict, setMessage, 'The result is uncertain. Try the action again when you are ready.', 'The work was not closed.', () => {
       setReason('')
       setConfirmed(false)
+      setReference('')
+      setFollowUpRequired(false)
       setMessage(null)
     })
   }
@@ -487,9 +499,26 @@ function CloseWorkForm({ title, onCloseWork, onRefresh }: {
       <label>Staff reason
         <textarea value={reason} onChange={(event) => setReason(event.target.value)} />
       </label>
+      <label>How this started
+        <select value={category} onChange={(event) => setCategory(event.target.value as StaffClosureInitiation['category'])}>
+          <option value="staff_observation">Staff observation</option>
+          <option value="report">Existing report</option>
+          <option value="support_request">Support request</option>
+        </select>
+      </label>
+      {category === 'staff_observation' ? null : (
+        <label>{category === 'report' ? 'Report id' : 'Support reference'}
+          <input value={reference} onChange={(event) => setReference(event.target.value)} />
+        </label>
+      )}
+      <label className="confirm-line">
+        <input type="checkbox" checked={followUpRequired} onChange={(event) => setFollowUpRequired(event.target.checked)} />
+        Financial follow-up is required. Closing the work does not complete it, and this does not change the payment.
+      </label>
+      <p className="section-note">Simulated payments are not real funds. Recording follow-up later does not confirm a provider refund.</p>
       <label className="confirm-line">
         <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
-        Close “{title}” as Closed by Mawahib. This is not acceptance, a refund, or a payout.
+        Close “{title}” as Closed by Mawahib. This ends the work. It is not acceptance, a refund, or a payout.
       </label>
       <div className="actions">
         <button type="button" onClick={() => void submit()}>Close work</button>

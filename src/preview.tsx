@@ -335,6 +335,12 @@ function previewRecords(mode: string): AdminRecords {
     async closeWork() {
       return { ok: false, kind: 'unavailable' }
     },
+    async closeEngagementWork() {
+      return { ok: false, kind: 'unavailable' }
+    },
+    async recordFinancialFollowUp() {
+      return { ok: false, kind: 'unavailable' }
+    },
     async operations() {
       if (mode === 'operations-denied') return { ok: false, kind: 'denied' }
       return { ok: true, data: previewOperations(mode) }

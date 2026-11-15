@@ -13,6 +13,7 @@ import type {
   StaffServiceDetail,
   StaffServiceListItem,
 } from './adminTypes'
+import { financialFollowUpText, initiationFrom, type StaffClosureInitiation } from './staffClosureCopy'
 import { LoadingIndicator } from './LoadingIndicator'
 
 export type MarketplacePhase = 'loading' | 'ready' | 'unavailable' | 'denied' | 'expired'
@@ -135,6 +136,8 @@ export function MarketplaceDetail({
   onOpenDispute,
   onViewInvoice,
   onRetryInvoice,
+  onCloseEngagement,
+  onRecordFollowUp,
 }: {
   tab: MarketplaceTab
   record: StaffJobDetail | StaffServiceDetail | StaffApplicationDetail | StaffEngagementDetail | null
@@ -149,6 +152,8 @@ export function MarketplaceDetail({
   onOpenDispute: (id: string) => void
   onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null>
   onRetryInvoice: (id: string) => Promise<InvoiceRetryResult>
+  onCloseEngagement?: (input: EngagementCloseInput) => Promise<void>
+  onRecordFollowUp?: (input: { outcome: 'no_real_funds' | 'simulated_exercise' | 'recorded_outside_provider'; note: string; idempotencyKey: string }) => Promise<void>
 }) {
   if (phase === 'loading') return <LoadingIndicator compact label="Loading record" />
   if (phase === 'unavailable') return <p role="alert">This record is temporarily unavailable.</p>
@@ -158,7 +163,7 @@ export function MarketplaceDetail({
   if (tab === 'jobs' && 'employmentType' in record) return <JobDetail record={record} onOpenUser={onOpenUser} onOpenApplications={onOpenApplications} onOpenEngagements={onOpenEngagements} onViewInvoice={onViewInvoice} onRetryInvoice={onRetryInvoice} />
   if (tab === 'services' && 'packageCount' in record) return <ServiceDetail record={record as StaffServiceDetail} onOpenUser={onOpenUser} onOpenEngagements={onOpenEngagements} />
   if (tab === 'applications' && 'applicant' in record) return <ApplicationDetail record={record as StaffApplicationDetail} onOpenUser={onOpenUser} onOpenJob={onOpenJob} onOpenEngagement={onOpenEngagement} />
-  if (tab === 'engagements' && 'source' in record) return <EngagementDetail record={record as StaffEngagementDetail} onOpenUser={onOpenUser} onOpenJob={onOpenJob} onOpenService={onOpenService} onOpenApplication={onOpenApplication} onOpenDispute={onOpenDispute} onViewInvoice={onViewInvoice} onRetryInvoice={onRetryInvoice} />
+  if (tab === 'engagements' && 'source' in record) return <EngagementDetail record={record as StaffEngagementDetail} onOpenUser={onOpenUser} onOpenJob={onOpenJob} onOpenService={onOpenService} onOpenApplication={onOpenApplication} onOpenDispute={onOpenDispute} onViewInvoice={onViewInvoice} onRetryInvoice={onRetryInvoice} onCloseEngagement={onCloseEngagement} onRecordFollowUp={onRecordFollowUp} />
   return <p role="alert">That record is not available.</p>
 }
 
@@ -447,7 +452,18 @@ function ApplicationDetail({ record, onOpenUser, onOpenJob, onOpenEngagement }: 
   )
 }
 
-function EngagementDetail({ record, onOpenUser, onOpenJob, onOpenService, onOpenApplication, onOpenDispute, onViewInvoice, onRetryInvoice }: { record: StaffEngagementDetail; onOpenUser: (id: string) => void; onOpenJob: (id: string) => void; onOpenService: (id: string) => void; onOpenApplication: (id: string) => void; onOpenDispute: (id: string) => void; onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null>; onRetryInvoice: (id: string) => Promise<InvoiceRetryResult> }) {
+function EngagementDetail({ record, onOpenUser, onOpenJob, onOpenService, onOpenApplication, onOpenDispute, onViewInvoice, onRetryInvoice, onCloseEngagement, onRecordFollowUp }: {
+  record: StaffEngagementDetail
+  onOpenUser: (id: string) => void
+  onOpenJob: (id: string) => void
+  onOpenService: (id: string) => void
+  onOpenApplication: (id: string) => void
+  onOpenDispute: (id: string) => void
+  onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null>
+  onRetryInvoice: (id: string) => Promise<InvoiceRetryResult>
+  onCloseEngagement?: (input: EngagementCloseInput) => Promise<void>
+  onRecordFollowUp?: (input: { outcome: 'no_real_funds' | 'simulated_exercise' | 'recorded_outside_provider'; note: string; idempotencyKey: string }) => Promise<void>
+}) {
   return (
     <section className="demo-list">
       <p>{record.closedByMawahib ? 'Closed by Mawahib' : labelWord(record.status)} · {labelWord(record.source)}{record.deletedAt ? ' · Deleted' : ''}</p>
@@ -459,7 +475,94 @@ function EngagementDetail({ record, onOpenUser, onOpenJob, onOpenService, onOpen
       {record.disputeCaseId ? <p><button type="button" onClick={() => onOpenDispute(record.disputeCaseId!)}>View dispute</button></p> : null}
       <h2>Invoices</h2>
       <PaymentAttempts payments={record.payments} onViewInvoice={onViewInvoice} onRetryInvoice={onRetryInvoice} />
+      {record.staffClosure ? <p>{financialFollowUpText(record.staffClosure.financialFollowUp.state)}</p> : null}
+      {record.closeWork?.blockedReason ? <p>{record.closeWork.blockedReason}</p> : null}
+      {record.closeWork?.route === 'dispute_case' && record.closeWork.openCaseId ? (
+        <p><button type="button" onClick={() => onOpenDispute(record.closeWork!.openCaseId!)}>Close this work from its open dispute case</button></p>
+      ) : null}
+      {record.closeWork?.route === 'engagement' && onCloseEngagement ? (
+        <EngagementCloseForm title={record.title} status={record.status} onClose={onCloseEngagement} />
+      ) : null}
+      {record.staffClosure?.financialFollowUp.state === 'outstanding' && onRecordFollowUp ? (
+        <FollowUpForm onRecord={onRecordFollowUp} />
+      ) : null}
     </section>
+  )
+}
+
+type EngagementCloseInput = {
+  reason: string
+  expectedEngagementStatus: 'in_progress' | 'delivered' | 'disputed'
+  confirmedTitle: string
+  idempotencyKey: string
+  initiation: StaffClosureInitiation
+  financialFollowUpRequired: boolean
+}
+
+function EngagementCloseForm({ title, status, onClose }: { title: string; status: string; onClose: (input: EngagementCloseInput) => Promise<void> }) {
+  const [reason, setReason] = useState('')
+  const [category, setCategory] = useState<StaffClosureInitiation['category']>('staff_observation')
+  const [reference, setReference] = useState('')
+  const [followUpRequired, setFollowUpRequired] = useState(false)
+  const [confirmed, setConfirmed] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const key = useRef(crypto.randomUUID())
+  if (status !== 'in_progress' && status !== 'delivered' && status !== 'disputed') return null
+  return (
+    <form onSubmit={(event) => {
+      event.preventDefault()
+      const initiation = initiationFrom(category, reference)
+      if (reason.trim().length < 3 || !initiation || !confirmed) {
+        setMessage('A reason, an initiation, and confirmation are required. This ends the work and does not issue a refund or payout.')
+        return
+      }
+      setMessage(null)
+      void onClose({
+        reason,
+        expectedEngagementStatus: status,
+        confirmedTitle: title,
+        idempotencyKey: key.current,
+        initiation,
+        financialFollowUpRequired: followUpRequired,
+      })
+    }}>
+      <h2>Close work</h2>
+      <p className="section-note">No open dispute case. This ends “{title}”, which is {status.replaceAll('_', ' ')}. It is not acceptance, a refund, or a payout.</p>
+      {message ? <p role="alert">{message}</p> : null}
+      <label>Staff reason<textarea value={reason} onChange={(event) => setReason(event.target.value)} /></label>
+      <label>How this started
+        <select value={category} onChange={(event) => setCategory(event.target.value as StaffClosureInitiation['category'])}>
+          <option value="staff_observation">Staff observation</option>
+          <option value="report">Existing report</option>
+          <option value="support_request">Support request</option>
+        </select>
+      </label>
+      {category === 'staff_observation' ? null : <label>{category === 'report' ? 'Report id' : 'Support reference'}<input value={reference} onChange={(event) => setReference(event.target.value)} /></label>}
+      <label className="confirm-line"><input type="checkbox" checked={followUpRequired} onChange={(event) => setFollowUpRequired(event.target.checked)} /> Financial follow-up is required. Closing does not complete it.</label>
+      <label className="confirm-line"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> Close this engagement as Closed by Mawahib.</label>
+      <button type="submit">Close work</button>
+    </form>
+  )
+}
+
+function FollowUpForm({ onRecord }: { onRecord: (input: { outcome: 'no_real_funds' | 'simulated_exercise' | 'recorded_outside_provider'; note: string; idempotencyKey: string }) => Promise<void> }) {
+  const [outcome, setOutcome] = useState<'no_real_funds' | 'simulated_exercise' | 'recorded_outside_provider'>('no_real_funds')
+  const [note, setNote] = useState('')
+  const key = useRef(crypto.randomUUID())
+  return (
+    <form onSubmit={(event) => { event.preventDefault(); if (note.trim().length >= 3) void onRecord({ outcome, note, idempotencyKey: key.current }) }}>
+      <h2>Financial follow-up</h2>
+      <p className="section-note">This records a staff note. It does not change the payment or confirm a provider refund. Simulated payments are not real funds.</p>
+      <label>Outcome
+        <select value={outcome} onChange={(event) => setOutcome(event.target.value as 'no_real_funds' | 'simulated_exercise' | 'recorded_outside_provider')}>
+          <option value="no_real_funds">No real funds</option>
+          <option value="simulated_exercise">Simulated exercise</option>
+          <option value="recorded_outside_provider">Recorded outside the payment provider</option>
+        </select>
+      </label>
+      <label>Note<textarea value={note} onChange={(event) => setNote(event.target.value)} /></label>
+      <button type="submit">Record follow-up</button>
+    </form>
   )
 }
 

@@ -89,6 +89,12 @@ function records(partial: Partial<AdminRecords> = {}): AdminRecords {
     async closeWork() {
       return { ok: false as const, kind: 'conflict' as const }
     },
+    async closeEngagementWork() {
+      return { ok: false as const, kind: 'conflict' as const }
+    },
+    async recordFinancialFollowUp() {
+      return { ok: false as const, kind: 'conflict' as const }
+    },
     async operations() {
       return { ok: true, data: operationsOverview() }
     },
@@ -500,6 +506,12 @@ describe('AdminShell', () => {
           async closeWork() {
             return { ok: false as const, kind: 'conflict' as const }
           },
+          async closeEngagementWork() {
+            return { ok: false as const, kind: 'conflict' as const }
+          },
+          async recordFinancialFollowUp() {
+            return { ok: false as const, kind: 'conflict' as const }
+          },
           async resolveDisputeCase(_id, input) {
             resolve(input)
             return {
@@ -557,6 +569,12 @@ describe('AdminShell', () => {
             }
           },
           async closeWork() {
+            return { ok: false as const, kind: 'uncertain' as const }
+          },
+          async closeEngagementWork() {
+            return { ok: false as const, kind: 'uncertain' as const }
+          },
+          async recordFinancialFollowUp() {
             return { ok: false as const, kind: 'uncertain' as const }
           },
           async resolveDisputeCase(_id, input) {

@@ -256,8 +256,31 @@ export type AdminRecords = {
   resolveDisputeCase(id: string, input: DisputeResolutionInput): Promise<AdminResult<DisputeMutation>>
   closeWork(
     id: string,
-    input: { reason: string; expectedRevision: number; expectedEngagementStatus: 'disputed'; confirmedTitle: string; idempotencyKey: string },
+    input: {
+      reason: string
+      expectedRevision: number
+      expectedEngagementStatus: 'in_progress' | 'delivered' | 'disputed'
+      confirmedTitle: string
+      idempotencyKey: string
+      initiation: { category: 'report'; reportId: string } | { category: 'support_request'; reference: string } | { category: 'staff_observation' }
+      financialFollowUpRequired: boolean
+    },
   ): Promise<AdminResult<DisputeMutation>>
+  closeEngagementWork(
+    id: string,
+    input: {
+      reason: string
+      expectedEngagementStatus: 'in_progress' | 'delivered' | 'disputed'
+      confirmedTitle: string
+      idempotencyKey: string
+      initiation: { category: 'report'; reportId: string } | { category: 'support_request'; reference: string } | { category: 'staff_observation' }
+      financialFollowUpRequired: boolean
+    },
+  ): Promise<AdminResult<{ outcome: 'changed' | 'replayed'; closureId: string }>>
+  recordFinancialFollowUp(
+    id: string,
+    input: { outcome: 'no_real_funds' | 'simulated_exercise' | 'recorded_outside_provider'; note: string; idempotencyKey: string },
+  ): Promise<AdminResult<{ outcome: 'changed' | 'replayed'; closureId: string }>>
   operations(): Promise<AdminResult<OperationsOverview>>
   reportSummary(): Promise<AdminResult<ReportTotals>>
   reports(query: ReportListQuery): Promise<AdminResult<StaffReportPage>>
@@ -457,6 +480,15 @@ export type StaffEngagementDetail = StaffEngagementListItem & {
   serviceOffering: { id: string; title: string; deleted: boolean } | null
   disputeCaseId: string | null
   payments: StaffPaymentAttempt[]
+  staffClosure?: {
+    legacy: boolean
+    financialFollowUp: { state: 'not_recorded' | 'not_required' | 'outstanding' | 'recorded' }
+  } | null
+  closeWork?: {
+    route: 'dispute_case' | 'engagement' | null
+    openCaseId: string | null
+    blockedReason: string | null
+  }
 }
 
 export type MarketplacePage<T> = { items: T[]; nextCursor: string | null; total: number; matchCount: number }

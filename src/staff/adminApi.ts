@@ -108,8 +108,22 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
     resolveDisputeCase(id, input: DisputeResolutionInput) {
       return post<DisputeMutation>(`/admin/dispute-cases/${encodeURIComponent(id)}/resolution`, input)
     },
-    closeWork(id, input: { reason: string; expectedRevision: number; expectedEngagementStatus: 'disputed'; confirmedTitle: string; idempotencyKey: string }) {
+    closeWork(id, input: {
+      reason: string
+      expectedRevision: number
+      expectedEngagementStatus: 'in_progress' | 'delivered' | 'disputed'
+      confirmedTitle: string
+      idempotencyKey: string
+      initiation: { category: 'report'; reportId: string } | { category: 'support_request'; reference: string } | { category: 'staff_observation' }
+      financialFollowUpRequired: boolean
+    }) {
       return post<DisputeMutation>(`/admin/dispute-cases/${encodeURIComponent(id)}/close-work`, input)
+    },
+    closeEngagementWork(id, input) {
+      return post<{ outcome: 'changed' | 'replayed'; closureId: string }>(`/admin/engagements/${encodeURIComponent(id)}/close-work`, input)
+    },
+    recordFinancialFollowUp(id, input) {
+      return post<{ outcome: 'changed' | 'replayed'; closureId: string }>(`/admin/engagements/${encodeURIComponent(id)}/financial-follow-up`, input)
     },
     operations() {
       return get<OperationsOverview>('/admin/operations')

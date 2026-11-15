@@ -219,14 +219,24 @@ export function AdminShell({
     return 'ok' as const
   }
 
-  async function actCloseWork(record: DisputeCaseDetail | null, reason: string, key: string) {
+  async function actCloseWork(
+    record: DisputeCaseDetail | null,
+    reason: string,
+    key: string,
+    initiation: { category: 'report'; reportId: string } | { category: 'support_request'; reference: string } | { category: 'staff_observation' },
+    financialFollowUpRequired: boolean,
+  ) {
     if (!record) return 'rejected' as const
+    const status = record.engagement.status
+    if (status !== 'in_progress' && status !== 'delivered' && status !== 'disputed') return 'rejected' as const
     const result = await records.closeWork(record.case.id, {
       reason,
       expectedRevision: revisionRef.current ?? record.case.revision,
-      expectedEngagementStatus: 'disputed',
+      expectedEngagementStatus: status,
       confirmedTitle: record.engagement.title,
       idempotencyKey: key,
+      initiation,
+      financialFollowUpRequired,
     })
     const kind = mutationResult(result)
     if (kind !== 'ok' || !result.ok) return kind
@@ -371,7 +381,7 @@ export function AdminShell({
           }}
           onStartReview={(note, key) => actDispute(view.record, 'start_review', note, key)}
           onClose={(outcome, note, key) => actDispute(view.record, 'close', note, key, outcome)}
-          onCloseWork={(reason, key) => actCloseWork(view.record, reason, key)}
+          onCloseWork={(reason, key, initiation, financialFollowUpRequired) => actCloseWork(view.record, reason, key, initiation, financialFollowUpRequired)}
           onReopen={(note, key) => actDispute(view.record, 'reopen', note, key)}
           onAssign={(staffMemberId, note, key) => actAssignment(view.record, staffMemberId, note, key)}
           onUnassign={(note, key) => actAssignment(view.record, null, note, key)}
@@ -430,6 +440,16 @@ export function AdminShell({
             return result.ok ? { url: result.data.url, originalFileName: result.data.originalFileName } : null
           }}
           onRetryInvoice={(id) => records.retryInvoice(id)}
+          onCloseEngagement={async (input) => {
+            if (view.tab !== 'engagements') return
+            const result = await records.closeEngagementWork(view.id, input)
+            if (result.ok) setReload((value) => value + 1)
+          }}
+          onRecordFollowUp={async (input) => {
+            if (view.tab !== 'engagements') return
+            const result = await records.recordFinancialFollowUp(view.id, input)
+            if (result.ok) setReload((value) => value + 1)
+          }}
         />
       ) : null}
       {view.name === 'report' ? (
