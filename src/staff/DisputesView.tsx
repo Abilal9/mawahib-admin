@@ -27,6 +27,7 @@ const OUTCOME_LABEL: Record<string, string> = {
   other: 'Other',
   returned_for_client_review: 'Returned to client review',
   further_work_agreed: 'Further work agreed',
+  closed_by_mawahib: 'Closed by Mawahib',
 }
 const RESOLUTION_COPY: Record<DisputeResolutionAction, { title: string; button: string; confirm: string }> = {
   return_to_client_review: {
@@ -134,6 +135,7 @@ export function DisputeCaseDetailView({
   onViewInvoice,
   onStartReview,
   onClose,
+  onCloseWork,
   onReopen,
   onAssign,
   onUnassign,
@@ -149,6 +151,7 @@ export function DisputeCaseDetailView({
   onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null>
   onStartReview: (note: string, key: string) => Promise<ActionResult>
   onClose: (outcome: DisputeCaseOutcome, note: string, key: string) => Promise<ActionResult>
+  onCloseWork: (reason: string, key: string) => Promise<ActionResult>
   onReopen: (note: string, key: string) => Promise<ActionResult>
   onAssign: (staffMemberId: string, note: string, key: string) => Promise<ActionResult>
   onUnassign: (note: string, key: string) => Promise<ActionResult>
@@ -169,7 +172,7 @@ export function DisputeCaseDetailView({
       <section className="demo-panel">
         <h2>Case summary</h2>
         <p>Handling status: {STATUS_LABEL[record.case.status]}</p>
-        <p>Engagement status: {label(record.engagement.status)}</p>
+        <p>Engagement status: {record.engagement.closedByMawahib ? 'Closed by Mawahib' : label(record.engagement.status)}</p>
         {record.case.status === 'closed' && record.case.engagementStillDisputed ? <p>Case closed. The engagement is still disputed.</p> : null}
         {record.case.closedOutcome ? <p>Outcome: {OUTCOME_LABEL[record.case.closedOutcome]}</p> : null}
         {record.case.closedNote ? <p>{record.case.closedNote}</p> : null}
@@ -183,7 +186,7 @@ export function DisputeCaseDetailView({
       <section className="demo-panel">
         <h2>Engagement</h2>
         <p>{record.engagement.title}</p>
-        <p>Current business status: {label(record.engagement.status)}{record.engagement.deleted ? ' · Deleted' : ''}</p>
+        <p>Current business status: {record.engagement.closedByMawahib ? 'Closed by Mawahib' : label(record.engagement.status)}{record.engagement.deleted ? ' · Deleted' : ''}</p>
         {record.related.job ? <p>Job: {record.related.job.title} · {label(record.related.job.status)}</p> : null}
         {record.related.service ? <p>Service: {record.related.service.title} · {label(record.related.service.status)}</p> : null}
         {record.related.application ? <p>Application: {label(record.related.application.status)}</p> : null}
@@ -244,6 +247,13 @@ export function DisputeCaseDetailView({
               ? <ResolutionForm key={action} action={action} onResolve={onResolve} onRefresh={onRefresh} />
               : choice.reason ? <p key={action}>{RESOLUTION_COPY[action].title}: {choice.reason}</p> : null
           })}
+        </section>
+      ) : null}
+      {record.viewer.canAct && record.viewer.allowedActions.includes('close_work') ? (
+        <section className="demo-panel case-form">
+          <h2>Close work</h2>
+          <p className="section-note">This closes the disputed work as Closed by Mawahib. It is not client acceptance, a refund, or a payout. Payments and invoices stay unchanged. Closing the case alone does not do this.</p>
+          <CloseWorkForm title={record.engagement.title} onCloseWork={onCloseWork} onRefresh={onRefresh} />
         </section>
       ) : null}
       {record.viewer.canAct && record.viewer.allowedActions.includes('close') ? (
@@ -442,6 +452,51 @@ function NoteForm({ onNote, onRefresh }: {
   )
 }
 
+function CloseWorkForm({ title, onCloseWork, onRefresh }: {
+  title: string
+  onCloseWork: (reason: string, key: string) => Promise<ActionResult>
+  onRefresh: () => Promise<void>
+}) {
+  const [reason, setReason] = useState('')
+  const [confirmed, setConfirmed] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const [conflict, setConflict] = useState(false)
+  const keys = useBoundRequestKey()
+  async function submit() {
+    if (reason.trim().length < 3) {
+      setMessage('A staff reason is required.')
+      setConflict(false)
+      return
+    }
+    if (!confirmed) {
+      setMessage(`Confirm that “${title}” will be Closed by Mawahib. Payments and invoices stay unchanged.`)
+      setConflict(false)
+      return
+    }
+    const result = await onCloseWork(reason, keys.keyFor(`close-work:${reason}`))
+    finishStaffAction(result, keys, setConflict, setMessage, 'The result is uncertain. Try the action again when you are ready.', 'The work was not closed.', () => {
+      setReason('')
+      setConfirmed(false)
+      setMessage(null)
+    })
+  }
+  return (
+    <>
+      <ActionFeedback message={message} conflict={conflict} onRefresh={async () => { setConflict(false); setMessage(null); await onRefresh() }} />
+      <label>Staff reason
+        <textarea value={reason} onChange={(event) => setReason(event.target.value)} />
+      </label>
+      <label className="confirm-line">
+        <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
+        Close “{title}” as Closed by Mawahib. This is not acceptance, a refund, or a payout.
+      </label>
+      <div className="actions">
+        <button type="button" onClick={() => void submit()}>Close work</button>
+      </div>
+    </>
+  )
+}
+
 function CloseForm({ onClose, onRefresh }: {
   onClose: (outcome: DisputeCaseOutcome, note: string, key: string) => Promise<ActionResult>
   onRefresh: () => Promise<void>
@@ -587,6 +642,9 @@ function resolutionChoice(record: DisputeCaseDetail, action: DisputeResolutionAc
 function businessEndSentence(end: NonNullable<DisputeCaseDetail['businessDisputeEnded']>) {
   const when = new Date(end.at).toLocaleString()
   const status = label(end.toStatus)
+  if (end.kind === 'staff_resolution' && end.toStatus === 'cancelled') {
+    return `Mawahib closed this work on ${when}. This is not client acceptance. Payments and invoices were not changed.`
+  }
   if (end.kind === 'staff_resolution') {
     return `${end.actorLabel ?? 'A staff operator'} moved this engagement to ${status} on ${when} and closed this case.`
   }

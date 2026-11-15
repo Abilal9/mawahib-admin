@@ -450,7 +450,7 @@ function ApplicationDetail({ record, onOpenUser, onOpenJob, onOpenEngagement }: 
 function EngagementDetail({ record, onOpenUser, onOpenJob, onOpenService, onOpenApplication, onOpenDispute, onViewInvoice, onRetryInvoice }: { record: StaffEngagementDetail; onOpenUser: (id: string) => void; onOpenJob: (id: string) => void; onOpenService: (id: string) => void; onOpenApplication: (id: string) => void; onOpenDispute: (id: string) => void; onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null>; onRetryInvoice: (id: string) => Promise<InvoiceRetryResult> }) {
   return (
     <section className="demo-list">
-      <p>{labelWord(record.status)} · {labelWord(record.source)}{record.deletedAt ? ' · Deleted' : ''}</p>
+      <p>{record.closedByMawahib ? 'Closed by Mawahib' : labelWord(record.status)} · {labelWord(record.source)}{record.deletedAt ? ' · Deleted' : ''}</p>
       <p>Client: <Party party={record.client} onOpen={onOpenUser} /> · Provider: <Party party={record.provider} onOpen={onOpenUser} /></p>
       <Payment item={record.payment} />
       {record.listing ? <p><button type="button" onClick={() => onOpenJob(record.listing!.id)}>{record.listing.title}</button></p> : null}

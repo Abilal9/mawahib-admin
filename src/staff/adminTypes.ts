@@ -27,7 +27,7 @@ export type StaffDisputePayment = {
 }
 
 export type DisputeCaseStatus = 'open' | 'in_review' | 'closed'
-export type DisputeCaseOutcome = 'parties_resolved' | 'no_staff_action' | 'payment_follow_up' | 'invalid_or_duplicate' | 'other' | 'returned_for_client_review' | 'further_work_agreed'
+export type DisputeCaseOutcome = 'parties_resolved' | 'no_staff_action' | 'payment_follow_up' | 'invalid_or_duplicate' | 'other' | 'returned_for_client_review' | 'further_work_agreed' | 'closed_by_mawahib'
 export type DisputeResolutionAction = 'return_to_client_review' | 'further_work' | 'follow_up'
 export type DisputeResolutionOption = { available: boolean; reason: string | null }
 export type DisputeCaseQuery = {
@@ -69,7 +69,7 @@ export type DisputeCaseDetail = {
     engagementStillDisputed: boolean
   }
   assignment: { assignee: (DisputeAssignee & { membershipStatus: string }) | null }
-  engagement: { id: string; title: string; status: string; source: string; deleted: boolean }
+  engagement: { id: string; title: string; status: string; source: string; deleted: boolean; closedByMawahib?: boolean }
   businessDisputeEnded: {
     kind: 'staff_resolution' | 'participant' | 'unknown'
     actorLabel: string | null
@@ -254,6 +254,10 @@ export type AdminRecords = {
   setDisputeCaseAssignment(id: string, input: DisputeAssignmentInput): Promise<AdminResult<DisputeMutation>>
   addDisputeCaseNote(id: string, input: { body: string; idempotencyKey: string }): Promise<AdminResult<{ outcome: 'changed' | 'replayed'; note: { id: string } }>>
   resolveDisputeCase(id: string, input: DisputeResolutionInput): Promise<AdminResult<DisputeMutation>>
+  closeWork(
+    id: string,
+    input: { reason: string; expectedRevision: number; expectedEngagementStatus: 'disputed'; confirmedTitle: string; idempotencyKey: string },
+  ): Promise<AdminResult<DisputeMutation>>
   operations(): Promise<AdminResult<OperationsOverview>>
   reportSummary(): Promise<AdminResult<ReportTotals>>
   reports(query: ReportListQuery): Promise<AdminResult<StaffReportPage>>
@@ -448,6 +452,7 @@ export type StaffEngagementInvoices = {
 export type StaffEngagementDetail = StaffEngagementListItem & {
   dueAt: string | null
   reviewWindowClosesAt: string | null
+  closedByMawahib?: boolean
   listing: { id: string; title: string; deleted: boolean } | null
   serviceOffering: { id: string; title: string; deleted: boolean } | null
   disputeCaseId: string | null

@@ -108,6 +108,9 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
     resolveDisputeCase(id, input: DisputeResolutionInput) {
       return post<DisputeMutation>(`/admin/dispute-cases/${encodeURIComponent(id)}/resolution`, input)
     },
+    closeWork(id, input: { reason: string; expectedRevision: number; expectedEngagementStatus: 'disputed'; confirmedTitle: string; idempotencyKey: string }) {
+      return post<DisputeMutation>(`/admin/dispute-cases/${encodeURIComponent(id)}/close-work`, input)
+    },
     operations() {
       return get<OperationsOverview>('/admin/operations')
     },

@@ -219,6 +219,25 @@ export function AdminShell({
     return 'ok' as const
   }
 
+  async function actCloseWork(record: DisputeCaseDetail | null, reason: string, key: string) {
+    if (!record) return 'rejected' as const
+    const result = await records.closeWork(record.case.id, {
+      reason,
+      expectedRevision: revisionRef.current ?? record.case.revision,
+      expectedEngagementStatus: 'disputed',
+      confirmedTitle: record.engagement.title,
+      idempotencyKey: key,
+    })
+    const kind = mutationResult(result)
+    if (kind !== 'ok' || !result.ok) return kind
+    revisionRef.current = result.data.case.revision
+    await refreshDispute()
+    setView((current) => current.name === 'dispute' && current.id === record.case.id
+      ? { ...current, notice: 'Mawahib closed this work. Payments and invoices were not changed.' }
+      : current)
+    return 'ok' as const
+  }
+
   async function actAssignment(record: DisputeCaseDetail | null, assigneeStaffMemberId: string | null, note: string, key: string) {
     if (!record) return 'rejected' as const
     const result = await records.setDisputeCaseAssignment(record.case.id, {
@@ -352,6 +371,7 @@ export function AdminShell({
           }}
           onStartReview={(note, key) => actDispute(view.record, 'start_review', note, key)}
           onClose={(outcome, note, key) => actDispute(view.record, 'close', note, key, outcome)}
+          onCloseWork={(reason, key) => actCloseWork(view.record, reason, key)}
           onReopen={(note, key) => actDispute(view.record, 'reopen', note, key)}
           onAssign={(staffMemberId, note, key) => actAssignment(view.record, staffMemberId, note, key)}
           onUnassign={(note, key) => actAssignment(view.record, null, note, key)}
