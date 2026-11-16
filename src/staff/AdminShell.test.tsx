@@ -59,6 +59,15 @@ function records(partial: Partial<AdminRecords> = {}): AdminRecords {
     async setAccountStatus() {
       return { ok: true, data: { outcome: 'changed', accountStatus: 'SUSPENDED' as const } }
     },
+    async deletionStatus() {
+      return { ok: true as const, data: { status: 'none' as const, closureEnabled: false } }
+    },
+    async confirmDeletion() {
+      return { ok: false as const, kind: 'conflict' as const, message: 'Final deletion is not available yet.' }
+    },
+    async retryDeletionCleanup() {
+      return { ok: true as const, data: { outcome: 'unchanged' as const } }
+    },
     async accountActions() {
       return { ok: true, data: { items: [], nextCursor: null } }
     },

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
-import type { AccountActionRecord, AdminRecords, AdminResult, AdminRoute, DisputeCaseDetail, DisputeCaseListItem, DisputeCaseQuery, DisputeMutation, DisputeResolutionAction, OperationsOverview, ReportListQuery, ReportTotals, StaffReportDetail, StaffReportSummary, StaffUserDetail, StaffUserSummary } from './adminTypes'
+import type { AccountActionRecord, AdminRecords, AdminResult, AdminRoute, DeletionStatus, DisputeCaseDetail, DisputeCaseListItem, DisputeCaseQuery, DisputeMutation, DisputeResolutionAction, OperationsOverview, ReportListQuery, ReportTotals, StaffReportDetail, StaffReportSummary, StaffUserDetail, StaffUserSummary } from './adminTypes'
 import { DisputeCaseDetailView, DisputeCaseList } from './DisputesView'
 import { EMPTY_DISPUTES } from './adminTypes'
 import { OPERATIONS_POLL_MS, OperationsView } from './OperationsView'
@@ -653,6 +653,112 @@ function SearchForm({
   )
 }
 
+function ProductDeletion({
+  userId,
+  email,
+  deleted,
+  records,
+  onAccessDenied,
+}: {
+  userId: string
+  email: string
+  deleted: boolean
+  records: AdminRecords
+  onAccessDenied?: () => void
+}) {
+  const reasonId = useId()
+  const emailId = useId()
+  const [status, setStatus] = useState<DeletionStatus | null>(null)
+  const [reason, setReason] = useState('')
+  const [confirmedEmail, setConfirmedEmail] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    void records.deletionStatus(userId).then((result) => {
+      if (!active) return
+      if (!result.ok && result.kind === 'denied') {
+        onAccessDenied?.()
+        return
+      }
+      if (result.ok) setStatus(result.data)
+    })
+    return () => {
+      active = false
+    }
+  }, [userId, notice, onAccessDenied, records])
+
+  if (!status?.closureEnabled && status?.status !== 'processing' && status?.status !== 'cleanup_complete') return null
+
+  async function confirm(event: FormEvent) {
+    event.preventDefault()
+    if (busy) return
+    setBusy(true)
+    const result = await records.confirmDeletion(userId, {
+      reason: reason.trim(),
+      confirmedEmail: confirmedEmail.trim(),
+      idempotencyKey: crypto.randomUUID(),
+    })
+    setBusy(false)
+    if (!result.ok && result.kind === 'denied') {
+      onAccessDenied?.()
+      return
+    }
+    if (!result.ok) {
+      const blockers = result.blockers?.map((item) => item.explanation).filter(Boolean).join(' ')
+      setNotice(blockers || result.message || 'Deletion was not confirmed.')
+      return
+    }
+    setNotice(result.data.outcome === 'replayed' ? 'Deletion is already processing.' : 'Deletion is processing. This account cannot be restored.')
+    setReason('')
+    setConfirmedEmail('')
+  }
+
+  async function retry(taskId: string) {
+    if (busy) return
+    setBusy(true)
+    const result = await records.retryDeletionCleanup(userId, taskId)
+    setBusy(false)
+    if (!result.ok && result.kind === 'denied') {
+      onAccessDenied?.()
+      return
+    }
+    setNotice(result.ok ? 'Cleanup retry was queued.' : 'Cleanup retry was not queued.')
+  }
+
+  return (
+    <section>
+      <h2>Delete account</h2>
+      {deleted || status.status !== 'none' ? <p>Deletion does not restore this account. Suspend and restore stay separate.</p> : null}
+      {status.status === 'none' && !deleted ? (
+        <form onSubmit={(event) => void confirm(event)}>
+          <p>Delete {email}. This is permanent and does not override work or payment blockers.</p>
+          <label htmlFor={reasonId}>Reason</label>
+          <textarea id={reasonId} required maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} />
+          <label htmlFor={emailId}>Type the account email</label>
+          <input id={emailId} required value={confirmedEmail} onChange={(event) => setConfirmedEmail(event.target.value)} autoComplete="off" />
+          <button type="submit" disabled={busy || reason.trim().length < 3 || confirmedEmail.trim().toLowerCase() !== email.toLowerCase()} aria-busy={busy}>
+            {busy ? <ButtonSpinner /> : null}
+            Delete this account
+          </button>
+        </form>
+      ) : null}
+      {status.tasks?.map((task) => (
+        <article key={task.id}>
+          <p>{task.kind} · {task.status}{task.lastError ? ` · ${task.lastError}` : ''}</p>
+          <p>Attempts {task.attempts}{task.nextAttemptAt ? ` · next ${task.nextAttemptAt}` : ''}</p>
+          {task.status === 'pending' ? (
+            <button type="button" onClick={() => void retry(task.id)} disabled={busy}>Retry cleanup</button>
+          ) : null}
+        </article>
+      ))}
+      {status.hasCompletionDestination ? <p>A completion address is retained until the mail window ends. Mail acceptance is not proof it was read.</p> : null}
+      {notice ? <p role="status">{notice}</p> : null}
+    </section>
+  )
+}
+
 function UserDetail({
   user,
   records,
@@ -796,13 +902,14 @@ function UserDetail({
           </div>
         )
       ) : null}
+      <ProductDeletion userId={current.id} email={current.email} deleted={Boolean(current.deletedAt)} records={records} onAccessDenied={onAccessDenied} />
       {message && !confirming ? <p role="status">{message}</p> : null}
       <h2>Account actions</h2>
       {history.length === 0 ? <p>No account actions are recorded.</p> : null}
       <div className="records">
         {history.map((item) => (
           <article key={item.id} className="record">
-            <p>{item.action === 'account_suspended' ? 'Suspended' : 'Restored'}</p>
+            <p>{item.action === 'account_suspended' ? 'Suspended' : item.action === 'account_deleted' ? 'Deleted' : 'Restored'}</p>
             <p>{item.reason}</p>
             <p>{item.previousStatus} to {item.resultingStatus}</p>
             <p>{formatWhen(item.createdAt)}</p>

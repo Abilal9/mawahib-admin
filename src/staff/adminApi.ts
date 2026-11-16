@@ -1,4 +1,4 @@
-import type { AccountStatusChange, AdminRecords, AdminResult, DisputeAssignmentInput, DisputeMutation, DisputeResolutionInput, DisputeStatusInput, InvoiceRetryResult, MarketplaceQuery, OperationsOverview, ReportTotals, StaffUserDetail } from './adminTypes'
+import type { AccountStatusChange, AdminRecords, AdminResult, DeletionConfirmResult, DeletionStatus, DisputeAssignmentInput, DisputeMutation, DisputeResolutionInput, DisputeStatusInput, InvoiceRetryResult, MarketplaceQuery, OperationsOverview, ReportTotals, StaffUserDetail } from './adminTypes'
 
 export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Promise<string | null>): AdminRecords {
   const base = apiBaseUrl.replace(/\/$/, '')
@@ -71,6 +71,39 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
         }
         return { ok: false, kind: 'uncertain' }
       }
+    },
+    deletionStatus(id) {
+      return get<DeletionStatus>(`/admin/users/${encodeURIComponent(id)}/deletion`)
+    },
+    async confirmDeletion(id, input): Promise<DeletionConfirmResult> {
+      try {
+        const response = await send(`/admin/users/${encodeURIComponent(id)}/deletion/confirm`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+        })
+        const body = await response.json().catch(() => null) as {
+          outcome?: 'closed' | 'replayed'
+          status?: 'processing'
+          code?: string
+          message?: string
+          blockers?: Array<{ engagementTitle?: string; explanation?: string }>
+        } | null
+        if (response.ok && body?.status === 'processing') {
+          return { ok: true, data: { outcome: body.outcome === 'replayed' ? 'replayed' : 'closed', status: 'processing' } }
+        }
+        if (response.status === 401 || response.status === 403) return { ok: false, kind: 'denied', message: body?.message }
+        if (response.status === 409) {
+          return { ok: false, kind: 'conflict', code: body?.code, message: body?.message, blockers: body?.blockers }
+        }
+        return { ok: false, kind: 'unavailable', message: body?.message }
+      } catch (error) {
+        if (error instanceof MissingToken) return { ok: false, kind: 'expired' }
+        return { ok: false, kind: 'unavailable' }
+      }
+    },
+    retryDeletionCleanup(id, taskId) {
+      return post(`/admin/users/${encodeURIComponent(id)}/deletion/cleanup/${encodeURIComponent(taskId)}/retry`, {})
     },
     accountActions(targetAccountId) {
       const params = new URLSearchParams({ targetAccountId })

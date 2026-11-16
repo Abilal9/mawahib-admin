@@ -286,6 +286,15 @@ function previewRecords(mode: string): AdminRecords {
       if (mode === 'user-unchanged') return { ok: true, data: { outcome: 'unchanged', accountStatus: 'SUSPENDED' } }
       return { ok: true, data: { outcome: 'changed', accountStatus: 'SUSPENDED' } }
     },
+    async deletionStatus() {
+      return { ok: true, data: { status: 'none', closureEnabled: false } }
+    },
+    async confirmDeletion() {
+      return { ok: false, kind: 'conflict', message: 'Final deletion is not available yet.' }
+    },
+    async retryDeletionCleanup() {
+      return { ok: true, data: { outcome: 'unchanged' } }
+    },
     async accountActions() {
       if (mode !== 'audit' && mode !== 'user-success') return { ok: true, data: { items: [], nextCursor: null } }
       return {

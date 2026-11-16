@@ -219,7 +219,7 @@ export type StaffUserPage = AdminPage<StaffUserSummary> & {
 
 export type AccountActionRecord = {
   id: string
-  action: 'account_suspended' | 'account_restored'
+  action: 'account_suspended' | 'account_restored' | 'account_deleted'
   actorSubjectId: string | null
   targetAccountId: string | null
   targetDisplayName: string | null
@@ -234,6 +234,37 @@ export type AccountStatusChange = {
   accountStatus: 'ACTIVE' | 'SUSPENDED'
 }
 
+export type DeletionCleanupTask = {
+  id: string
+  kind: 'auth_user' | 'storage_object' | 'completion_email'
+  status: 'pending' | 'succeeded'
+  attempts: number
+  lastError: string | null
+  nextAttemptAt: string | null
+  completedAt: string | null
+  bucket: string | null
+  objectKey: string | null
+}
+
+export type DeletionStatus = {
+  status: 'none' | 'processing' | 'cleanup_complete'
+  closureEnabled: boolean
+  closedAt?: string | null
+  hasCompletionDestination?: boolean
+  completionEmailExpiresAt?: string | null
+  tasks?: DeletionCleanupTask[]
+}
+
+export type DeletionConfirmResult =
+  | { ok: true; data: { outcome: 'closed' | 'replayed'; status: 'processing' } }
+  | {
+      ok: false
+      kind: 'denied' | 'expired' | 'unavailable' | 'conflict'
+      code?: string
+      message?: string
+      blockers?: Array<{ engagementTitle?: string; explanation?: string }>
+    }
+
 export type AdminResult<T> =
   | { ok: true; data: T }
   | { ok: false; kind: 'denied' | 'expired' | 'unavailable' | 'not-found' | 'conflict' | 'invalid' | 'ineligible' | 'uncertain' }
@@ -245,6 +276,12 @@ export type AdminRecords = {
     id: string,
     input: { status: 'ACTIVE' | 'SUSPENDED'; expectedStatus: 'ACTIVE' | 'SUSPENDED'; reason: string },
   ): Promise<AdminResult<AccountStatusChange>>
+  deletionStatus(id: string): Promise<AdminResult<DeletionStatus>>
+  confirmDeletion(
+    id: string,
+    input: { reason: string; confirmedEmail: string; idempotencyKey: string },
+  ): Promise<DeletionConfirmResult>
+  retryDeletionCleanup(id: string, taskId: string): Promise<AdminResult<{ outcome: 'queued' | 'unchanged' }>>
   accountActions(targetAccountId: string): Promise<AdminResult<AdminPage<AccountActionRecord>>>
   disputeCaseSummary(): Promise<AdminResult<DisputeCaseSummary>>
   disputeCases(query: DisputeCaseQuery): Promise<AdminResult<AdminPage<DisputeCaseListItem> & { total: number; matchCount: number }>>
