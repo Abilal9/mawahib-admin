@@ -359,6 +359,9 @@ function previewRecords(mode: string): AdminRecords {
     async financialFollowUps() {
       return { ok: true, data: { items: [], nextCursor: null, totalRecords: 0, matchCount: 0 } }
     },
+    async growth() {
+      return { ok: false, kind: 'unavailable' }
+    },
     async operations() {
       if (mode === 'operations-denied') return { ok: false, kind: 'denied' }
       return { ok: true, data: previewOperations(mode) }

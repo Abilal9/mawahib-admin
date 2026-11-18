@@ -353,6 +353,7 @@ export type AdminRecords = {
   retryInvoice(id: string): Promise<InvoiceRetryResult>
   paymentAttempts(query: PaymentsQuery): Promise<AdminResult<StaffPaymentLedgerPage>>
   financialFollowUps(query: Pick<PaymentsQuery, 'followStates' | 'followCursor'>): Promise<AdminResult<StaffFollowUpPage>>
+  growth(period: 7 | 30): Promise<AdminResult<GrowthSnapshot>>
 }
 
 export type InvoiceRetryResult =
@@ -383,7 +384,32 @@ export type AdminRoute =
   | ({ name: 'marketplace' } & MarketplaceQuery)
   | { name: 'marketplace-detail'; tab: MarketplaceTab; id: string; returnTo: MarketplaceQuery | PaymentsQuery }
   | ({ name: 'payments' } & PaymentsQuery)
+  | { name: 'growth'; period: 7 | 30 }
   | { name: 'staff' }
+
+export type GrowthSnapshot = {
+  asOf: string
+  timeZone: 'Asia/Riyadh'
+  periodDays: 7 | 30
+  periodStart: string
+  periodEnd: string
+  current: {
+    accounts: number
+    publicJobs: number
+    publicServices: number
+    publicPosts: number
+    staffHiddenJobs: number
+    staffHiddenServices: number
+    engagements: number
+  }
+  createdInPeriod: {
+    accounts: number
+    publicJobs: number
+    publicServices: number
+    publicPosts: number
+    engagements: number
+  }
+}
 
 export type PaymentsQuery = {
   q: string

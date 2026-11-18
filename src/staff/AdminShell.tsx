@@ -6,9 +6,10 @@ import { OPERATIONS_POLL_MS, OperationsView } from './OperationsView'
 import { ReportDetail, ReportsList } from './ReportsView'
 import { ButtonSpinner, LoadingIndicator } from './LoadingIndicator'
 import { PortalFrame, type PortalSection } from '../portal/PortalFrame'
-import { EMPTY_MARKETPLACE, EMPTY_PAYMENTS, type MarketplaceQuery, type MarketplaceTab, type PaymentsQuery, type StaffApplicationDetail, type StaffApplicationListItem, type StaffEngagementDetail, type StaffEngagementListItem, type StaffFollowUpPage, type StaffJobDetail, type StaffJobListItem, type StaffPaymentLedgerPage, type StaffServiceDetail, type StaffServiceListItem } from './adminTypes'
+import { EMPTY_MARKETPLACE, EMPTY_PAYMENTS, type GrowthSnapshot, type MarketplaceQuery, type MarketplaceTab, type PaymentsQuery, type StaffApplicationDetail, type StaffApplicationListItem, type StaffEngagementDetail, type StaffEngagementListItem, type StaffFollowUpPage, type StaffJobDetail, type StaffJobListItem, type StaffPaymentLedgerPage, type StaffServiceDetail, type StaffServiceListItem } from './adminTypes'
 import { MarketplaceDetail, MarketplaceList, type MarketplacePhase } from './MarketplaceView'
 import { PaymentsView } from './PaymentsView'
+import { GrowthView } from './GrowthView'
 
 type PlaceholderSection = 'marketplace' | 'staff'
 
@@ -25,6 +26,7 @@ type View =
   | { name: 'marketplace'; query: MarketplaceQuery; items: Array<StaffJobListItem | StaffServiceListItem | StaffApplicationListItem | StaffEngagementListItem>; nextCursor: string | null; total: number | null; matchCount: number | null; phase: MarketplacePhase }
   | { name: 'marketplace-detail'; tab: MarketplaceTab; id: string; returnTo: MarketplaceQuery | PaymentsQuery; record: StaffJobDetail | StaffServiceDetail | StaffApplicationDetail | StaffEngagementDetail | null; phase: MarketplacePhase }
   | { name: 'payments'; query: PaymentsQuery; attempts: StaffPaymentLedgerPage | null; followUps: StaffFollowUpPage | null; phase: 'loading' | 'ready' | 'unavailable' | 'denied' | 'expired' }
+  | { name: 'growth'; period: 7 | 30; snapshot: GrowthSnapshot | null; phase: 'loading' | 'ready' | 'unavailable' | 'denied' | 'expired' }
   | { name: 'placeholder'; section: PlaceholderSection }
   | { name: 'empty'; message: string }
   | { name: 'denied' }
@@ -88,6 +90,8 @@ export function AdminShell({
         record: null,
         phase: 'loading',
       })
+    } else if (route.name === 'growth') {
+      setView({ name: 'growth', period: route.period, snapshot: null, phase: 'loading' })
     } else if (route.name === 'payments') {
       setView({
         name: 'payments',
@@ -134,7 +138,7 @@ export function AdminShell({
         return
       }
       if (next.name === 'reports' && (next.phase === 'denied' || next.phase === 'expired') && onAccessDenied) onAccessDenied()
-      if ((next.name === 'marketplace' || next.name === 'marketplace-detail' || next.name === 'disputes' || next.name === 'dispute' || next.name === 'payments') && (next.phase === 'denied' || next.phase === 'expired') && onAccessDenied) onAccessDenied()
+      if ((next.name === 'marketplace' || next.name === 'marketplace-detail' || next.name === 'disputes' || next.name === 'dispute' || next.name === 'payments' || next.name === 'growth') && (next.phase === 'denied' || next.phase === 'expired') && onAccessDenied) onAccessDenied()
       setView(next)
     })
     return () => {
@@ -482,6 +486,14 @@ export function AdminShell({
           }}
         />
       ) : null}
+      {view.name === 'growth' ? (
+        <GrowthView
+          period={view.period}
+          snapshot={view.snapshot}
+          phase={view.phase}
+          onPeriod={(period) => open({ name: 'growth', period })}
+        />
+      ) : null}
       {view.name === 'payments' ? (
         <PaymentsView
           query={view.query}
@@ -525,6 +537,7 @@ function navigateSection(section: PortalSection): AdminRoute {
   if (section === 'reports') return { name: 'reports', statuses: ['open'], targetTypes: [], exactTarget: null, cursor: null }
   if (section === 'marketplace') return { name: 'marketplace', ...EMPTY_MARKETPLACE }
   if (section === 'payments') return { name: 'payments', ...EMPTY_PAYMENTS }
+  if (section === 'growth') return { name: 'growth', period: 7 }
   return { name: section }
 }
 
@@ -536,7 +549,7 @@ function sectionFor(route: AdminRoute): PortalSection {
   if (route.name === 'report') return 'reports'
   if (route.name === 'marketplace-detail' && isPaymentsQuery(route.returnTo)) return 'payments'
   if (route.name === 'marketplace' || route.name === 'marketplace-detail') return 'marketplace'
-  if (route.name === 'payments' || route.name === 'staff') return route.name
+  if (route.name === 'payments' || route.name === 'staff' || route.name === 'growth') return route.name
   return route.name
 }
 
@@ -555,6 +568,7 @@ function titleFor(route: AdminRoute, view: View): string {
   if (route.name === 'reports') return 'Reports'
   if (route.name === 'report') return 'Report'
   if (route.name === 'payments') return 'Payments'
+  if (route.name === 'growth') return 'Growth'
   return 'Staff'
 }
 
@@ -1017,6 +1031,7 @@ async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
     return { name: 'placeholder', section: route.name }
   }
   if (route.name === 'payments') return loadPayments(records, route)
+  if (route.name === 'growth') return loadGrowth(records, route.period)
   if (route.name === 'home') {
     const [operationsResult, usersResult, reportsResult, marketplaceResult, disputeResult] = await Promise.all([
       records.operations(),
@@ -1166,6 +1181,15 @@ function paymentsQuery(route: PaymentsQuery): PaymentsQuery {
 
 function isPaymentsQuery(value: MarketplaceQuery | PaymentsQuery): value is PaymentsQuery {
   return 'followStates' in value
+}
+
+async function loadGrowth(records: AdminRecords, period: 7 | 30): Promise<View> {
+  const result = await records.growth(period)
+  if (!result.ok) {
+    const phase = result.kind === 'denied' ? 'denied' : result.kind === 'expired' ? 'expired' : 'unavailable'
+    return { name: 'growth', period, snapshot: null, phase }
+  }
+  return { name: 'growth', period, snapshot: result.data, phase: 'ready' }
 }
 
 async function loadPayments(records: AdminRecords, route: PaymentsQuery & { name: 'payments' }): Promise<View> {

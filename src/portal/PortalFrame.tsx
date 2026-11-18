@@ -9,6 +9,8 @@ export const PORTAL_SECTIONS = [
   { id: 'reports', label: 'Reports' },
   { id: 'disputes', label: 'Disputes' },
   { id: 'payments', label: 'Payments' },
+  { id: 'growth', label: 'Growth' },
+  { id: 'growth', label: 'Growth' },
   { id: 'operations', label: 'Monitoring' },
   { id: 'staff', label: 'Staff' },
 ] as const

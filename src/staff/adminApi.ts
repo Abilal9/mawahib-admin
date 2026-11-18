@@ -254,6 +254,9 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
       const suffix = params.size > 0 ? `?${params.toString()}` : ''
       return get(`/admin/payments${suffix}`)
     },
+    growth(period) {
+      return get(`/admin/growth?period=${period}`)
+    },
     financialFollowUps(query) {
       const params = new URLSearchParams()
       if (query.followStates.length > 0) params.set('followState', query.followStates.join(','))

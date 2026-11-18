@@ -342,6 +342,53 @@ button:focus-visible {
   }
 }
 
+.growth-page {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.growth-page .growth-metrics {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.growth-metrics .demo-metric {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.growth-period {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.growth-help {
+  margin-top: 8px;
+  min-width: 0;
+}
+
+.growth-help summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.growth-help p {
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 720px) {
+  .growth-page .growth-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .report-filter-bar {
   display: flex;
   flex-wrap: wrap;

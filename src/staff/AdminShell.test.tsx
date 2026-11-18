@@ -113,6 +113,9 @@ function records(partial: Partial<AdminRecords> = {}): AdminRecords {
     async financialFollowUps() {
       return { ok: true as const, data: { items: [], nextCursor: null, totalRecords: 0, matchCount: 0 } }
     },
+    async growth() {
+      return { ok: false as const, kind: 'unavailable' as const }
+    },
     async operations() {
       return { ok: true, data: operationsOverview() }
     },
@@ -1103,6 +1106,42 @@ describe('AdminShell', () => {
     expect(screen.getByRole('button', { name: 'All statuses' })).toBeTruthy()
     expect(screen.getByLabelText('Loading payment attempts')).toBeTruthy()
     expect(screen.getByLabelText('Loading financial follow-up')).toBeTruthy()
+  })
+
+  it('keeps Growth controls in place, shows unavailable instead of zero, and ignores a stale period', async () => {
+    const snapshot = (period: 7 | 30, createdAccounts: number) => ({
+      asOf: '2026-11-18T09:00:00.000Z',
+      timeZone: 'Asia/Riyadh' as const,
+      periodDays: period,
+      periodStart: '2026-11-11T21:00:00.000Z',
+      periodEnd: '2026-11-18T09:00:00.000Z',
+      current: { accounts: 9, publicJobs: 1, publicServices: 1, publicPosts: 1, staffHiddenJobs: 0, staffHiddenServices: 0, engagements: 4 },
+      createdInPeriod: { accounts: createdAccounts, publicJobs: 0, publicServices: 0, publicPosts: 0, engagements: 0 },
+    })
+    let finishWeek: (value: { ok: true; data: ReturnType<typeof snapshot> }) => void = () => undefined
+    render(
+      <AdminShell
+        records={records({
+          async growth(period) {
+            if (period === 7) return new Promise((resolve) => { finishWeek = resolve })
+            return { ok: true as const, data: snapshot(30, 2) }
+          },
+        })}
+        initialRoute={{ name: 'growth', period: 7 }}
+        onSignOut={() => undefined}
+      />,
+    )
+    expect(await screen.findByRole('heading', { name: 'Growth' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '7 days' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByLabelText('Loading growth counts')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '30 days' }))
+    expect(await screen.findByText('These are records created in the selected period that still qualify now.')).toBeTruthy()
+    expect(screen.getAllByText('2').length).toBeGreaterThan(0)
+    expect(screen.queryByText('99')).toBeNull()
+    finishWeek({ ok: true, data: snapshot(7, 99) })
+    await act(async () => { await Promise.resolve() })
+    expect(screen.queryByText('99')).toBeNull()
+    expect(screen.getByRole('button', { name: '30 days' }).getAttribute('aria-pressed')).toBe('true')
   })
 
   it('opens the selected marketplace tab', async () => {
