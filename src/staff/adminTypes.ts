@@ -351,6 +351,8 @@ export type AdminRecords = {
   engagement(id: string): Promise<AdminResult<StaffEngagementDetail>>
   invoiceDocument(id: string): Promise<AdminResult<{ url: string; originalFileName: string; mimeType: string }>>
   retryInvoice(id: string): Promise<InvoiceRetryResult>
+  paymentAttempts(query: PaymentsQuery): Promise<AdminResult<StaffPaymentLedgerPage>>
+  financialFollowUps(query: Pick<PaymentsQuery, 'followStates' | 'followCursor'>): Promise<AdminResult<StaffFollowUpPage>>
 }
 
 export type InvoiceRetryResult =
@@ -372,16 +374,84 @@ export type InvoiceRetryResult =
 export type AdminRoute =
   | { name: 'home' }
   | { name: 'users'; query: string; cursor: string | null }
-  | { name: 'user'; id: string }
+  | { name: 'user'; id: string; returnTo?: PaymentsQuery }
   | ({ name: 'disputes' } & DisputeCaseQuery)
   | { name: 'dispute'; id: string; returnTo: DisputeCaseQuery }
   | { name: 'operations' }
   | ({ name: 'reports' } & ReportListQuery)
   | { name: 'report'; id: string; returnTo: ReportListQuery }
   | ({ name: 'marketplace' } & MarketplaceQuery)
-  | { name: 'marketplace-detail'; tab: MarketplaceTab; id: string; returnTo: MarketplaceQuery }
-  | { name: 'payments' }
+  | { name: 'marketplace-detail'; tab: MarketplaceTab; id: string; returnTo: MarketplaceQuery | PaymentsQuery }
+  | ({ name: 'payments' } & PaymentsQuery)
   | { name: 'staff' }
+
+export type PaymentsQuery = {
+  q: string
+  statuses: string[]
+  invoiceStates: string[]
+  hideDeletedEngagements: boolean
+  cursor: string | null
+  followStates: string[]
+  followCursor: string | null
+}
+
+export const EMPTY_PAYMENTS: PaymentsQuery = {
+  q: '',
+  statuses: [],
+  invoiceStates: [],
+  hideDeletedEngagements: false,
+  cursor: null,
+  followStates: [],
+  followCursor: null,
+}
+
+export type StaffPaymentLedgerItem = {
+  id: string
+  amount: string
+  currency: string
+  status: string
+  simulated: boolean
+  referencedByProvider: boolean
+  createdAt: string
+  succeededAt: string | null
+  failedAt: string | null
+  payer: StaffParty | null
+  payee: StaffParty | null
+  engagement: {
+    id: string
+    title: string
+    status: string
+    closedByMawahib: boolean
+    cancelledByMawahib: boolean
+    deleted: boolean
+  }
+  invoice: StaffPaymentAttempt['invoice'] | null
+}
+
+export type StaffPaymentLedgerPage = {
+  items: StaffPaymentLedgerItem[]
+  nextCursor: string | null
+  totalAttempts: number
+  matchCount: number
+}
+
+export type StaffFollowUpRecord = {
+  id: string
+  state: 'outstanding' | 'recorded'
+  outcome: string | null
+  note: string | null
+  recordedAt: string | null
+  recordedByStaffLabel: string | null
+  createdAt: string
+  engagement: StaffPaymentLedgerItem['engagement']
+}
+
+export type StaffFollowUpPage = {
+  items: StaffFollowUpRecord[]
+  nextCursor: string | null
+  totalRecords: number
+  matchCount: number
+}
 
 export type MarketplaceTab = 'jobs' | 'services' | 'applications' | 'engagements'
 

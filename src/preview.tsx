@@ -353,6 +353,12 @@ function previewRecords(mode: string): AdminRecords {
     async recordFinancialFollowUp() {
       return { ok: false, kind: 'unavailable' }
     },
+    async paymentAttempts() {
+      return { ok: true, data: { items: [], nextCursor: null, totalAttempts: 0, matchCount: 0 } }
+    },
+    async financialFollowUps() {
+      return { ok: true, data: { items: [], nextCursor: null, totalRecords: 0, matchCount: 0 } }
+    },
     async operations() {
       if (mode === 'operations-denied') return { ok: false, kind: 'denied' }
       return { ok: true, data: previewOperations(mode) }

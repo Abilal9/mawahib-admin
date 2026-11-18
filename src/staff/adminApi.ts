@@ -244,6 +244,23 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
     engagement(id) {
       return get(`/admin/engagements/${encodeURIComponent(id)}`)
     },
+    paymentAttempts(query) {
+      const params = new URLSearchParams()
+      if (query.q.trim()) params.set('q', query.q.trim())
+      if (query.statuses.length > 0) params.set('status', query.statuses.join(','))
+      if (query.invoiceStates.length > 0) params.set('invoiceState', query.invoiceStates.join(','))
+      if (query.hideDeletedEngagements) params.set('hideDeletedEngagements', 'true')
+      if (query.cursor) params.set('cursor', query.cursor)
+      const suffix = params.size > 0 ? `?${params.toString()}` : ''
+      return get(`/admin/payments${suffix}`)
+    },
+    financialFollowUps(query) {
+      const params = new URLSearchParams()
+      if (query.followStates.length > 0) params.set('followState', query.followStates.join(','))
+      if (query.followCursor) params.set('cursor', query.followCursor)
+      const suffix = params.size > 0 ? `?${params.toString()}` : ''
+      return get(`/admin/financial-follow-ups${suffix}`)
+    },
     invoiceDocument(id) {
       return get<{ url: string; originalFileName: string; mimeType: string }>(`/admin/invoices/${encodeURIComponent(id)}/document`)
     },

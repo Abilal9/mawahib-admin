@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AdminShell } from './AdminShell'
-import { EMPTY_DISPUTES, EMPTY_MARKETPLACE, type AdminRecords, type OperationsOverview, type StaffUserSummary } from './adminTypes'
+import { EMPTY_DISPUTES, EMPTY_MARKETPLACE, EMPTY_PAYMENTS, type AdminRecords, type OperationsOverview, type StaffUserSummary } from './adminTypes'
 import { OPERATIONS_POLL_MS } from './OperationsView'
 
 const user: StaffUserSummary = {
@@ -106,6 +106,12 @@ function records(partial: Partial<AdminRecords> = {}): AdminRecords {
     },
     async recordFinancialFollowUp() {
       return { ok: false as const, kind: 'conflict' as const }
+    },
+    async paymentAttempts() {
+      return { ok: true as const, data: { items: [], nextCursor: null, totalAttempts: 0, matchCount: 0 } }
+    },
+    async financialFollowUps() {
+      return { ok: true as const, data: { items: [], nextCursor: null, totalRecords: 0, matchCount: 0 } }
     },
     async operations() {
       return { ok: true, data: operationsOverview() }
@@ -1069,9 +1075,34 @@ describe('AdminShell', () => {
     expect(screen.getByText('No reports match these filters.')).toBeTruthy()
     expect(screen.getByText('Matching reports: 0')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Payments' }))
-    expect(await screen.findByText(/Payment and invoice lists are not connected/)).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Payment attempts' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Payments' })).toBeTruthy()
+    expect(screen.getByText('No payment attempts match.')).toBeTruthy()
+    expect(screen.getByText('No financial follow-up records match.')).toBeTruthy()
+    expect(screen.queryByText(/Payment and invoice lists are not connected/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Staff' }))
     expect(await screen.findByText(/operator commands/)).toBeTruthy()
+  })
+
+  it('keeps the Payments title and filters visible while the lists load', async () => {
+    render(
+      <AdminShell
+        records={records({
+          async paymentAttempts() {
+            return new Promise(() => undefined)
+          },
+          async financialFollowUps() {
+            return new Promise(() => undefined)
+          },
+        })}
+        initialRoute={{ name: 'payments', ...EMPTY_PAYMENTS }}
+        onSignOut={() => undefined}
+      />,
+    )
+    expect(await screen.findByRole('heading', { name: 'Payments' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'All statuses' })).toBeTruthy()
+    expect(screen.getByLabelText('Loading payment attempts')).toBeTruthy()
+    expect(screen.getByLabelText('Loading financial follow-up')).toBeTruthy()
   })
 
   it('opens the selected marketplace tab', async () => {
