@@ -747,6 +747,7 @@ describe('StaffPortal', () => {
     )
     expect(await screen.findByRole('heading', { name: 'Marketplace' })).toBeTruthy()
     expect(await screen.findByText('Invoice MWH-2026-000001')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Cancel accepted unpaid work' })).toBeNull()
 
     harness.replaceSession({
       accessToken: 'token-2',
@@ -798,6 +799,69 @@ describe('StaffPortal', () => {
     await waitFor(() => expect(opened).toEqual([{ target: '_blank', rel: 'noopener noreferrer' }]))
     click.mockRestore()
     expect(screen.getByRole('heading', { name: 'Marketplace' })).toBeTruthy()
+  })
+
+  it('explains unpaid cancellation from the current engagement', async () => {
+    const session = {
+      accessToken: 'token-1',
+      userId: 'user-1',
+      level: 'aal2' as const,
+      factors: [{ id: 'totp-1', factorType: 'totp' as const, status: 'verified' as const }],
+    }
+    const availableHarness = createHarness(session)
+    availableHarness.setAccessResults([{ ok: true, role: 'operator' }])
+    const available = {
+      ...engagementDetail(),
+      status: 'pending_payment',
+      completedAt: null,
+      payments: [],
+      cancelUnpaid: { available: true, blockedReason: null },
+    }
+    const availableView = render(
+      <StaffPortal
+        auth={availableHarness.auth}
+        access={availableHarness.access}
+        records={detailRecords(available)}
+        initialRoute={{
+          name: 'marketplace-detail',
+          tab: 'engagements',
+          id: available.id,
+          returnTo: { ...EMPTY_MARKETPLACE, tab: 'engagements' },
+        }}
+      />,
+    )
+    expect(await screen.findByText('No payment attempts')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Cancel accepted unpaid work' })).toBeTruthy()
+    expect(screen.getByText(/does not issue a refund/)).toBeTruthy()
+    availableView.unmount()
+
+    const blockedHarness = createHarness(session)
+    blockedHarness.setAccessResults([{ ok: true, role: 'operator' }])
+    const payment = engagementDetail().payments[0]
+    const blocked = {
+      ...engagementDetail(),
+      status: 'pending_payment',
+      completedAt: null,
+      payments: [{ ...payment, status: 'pending', invoice: null, referencedByProvider: true }],
+      cancelUnpaid: { available: false, blockedReason: 'A payment attempt already has a provider reference.' },
+    }
+    render(
+      <StaffPortal
+        auth={blockedHarness.auth}
+        access={blockedHarness.access}
+        records={detailRecords(blocked)}
+        initialRoute={{
+          name: 'marketplace-detail',
+          tab: 'engagements',
+          id: blocked.id,
+          returnTo: { ...EMPTY_MARKETPLACE, tab: 'engagements' },
+        }}
+      />,
+    )
+    expect(await screen.findByText('No invoice issued')).toBeTruthy()
+    expect(screen.getByText('Provider reference recorded')).toBeTruthy()
+    expect(screen.getByText('A payment attempt already has a provider reference.')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Cancel accepted unpaid work' })).toBeNull()
   })
 
   it('clears an open engagement when a session recheck is denied', async () => {

@@ -344,6 +344,9 @@ function previewRecords(mode: string): AdminRecords {
     async closeWork() {
       return { ok: false, kind: 'unavailable' }
     },
+    async cancelUnpaidWork() {
+      return { ok: false, kind: 'unavailable' }
+    },
     async closeEngagementWork() {
       return { ok: false, kind: 'unavailable' }
     },

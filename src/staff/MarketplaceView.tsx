@@ -14,7 +14,7 @@ import type {
   StaffServiceListItem,
 } from './adminTypes'
 import { financialFollowUpText, initiationFrom, type StaffClosureInitiation } from './staffClosureCopy'
-import { LoadingIndicator } from './LoadingIndicator'
+import { ButtonSpinner, LoadingIndicator } from './LoadingIndicator'
 
 export type MarketplacePhase = 'loading' | 'ready' | 'unavailable' | 'denied' | 'expired'
 
@@ -137,6 +137,7 @@ export function MarketplaceDetail({
   onViewInvoice,
   onRetryInvoice,
   onCloseEngagement,
+  onCancelUnpaid,
   onRecordFollowUp,
 }: {
   tab: MarketplaceTab
@@ -153,6 +154,7 @@ export function MarketplaceDetail({
   onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null>
   onRetryInvoice: (id: string) => Promise<InvoiceRetryResult>
   onCloseEngagement?: (input: EngagementCloseInput) => Promise<void>
+  onCancelUnpaid?: (input: UnpaidCancelInput) => Promise<UnpaidCancelResult>
   onRecordFollowUp?: (input: { outcome: 'no_real_funds' | 'simulated_exercise' | 'recorded_outside_provider'; note: string; idempotencyKey: string }) => Promise<void>
 }) {
   if (phase === 'loading') return <LoadingIndicator compact label="Loading record" />
@@ -163,7 +165,7 @@ export function MarketplaceDetail({
   if (tab === 'jobs' && 'employmentType' in record) return <JobDetail record={record} onOpenUser={onOpenUser} onOpenApplications={onOpenApplications} onOpenEngagements={onOpenEngagements} onViewInvoice={onViewInvoice} onRetryInvoice={onRetryInvoice} />
   if (tab === 'services' && 'packageCount' in record) return <ServiceDetail record={record as StaffServiceDetail} onOpenUser={onOpenUser} onOpenEngagements={onOpenEngagements} />
   if (tab === 'applications' && 'applicant' in record) return <ApplicationDetail record={record as StaffApplicationDetail} onOpenUser={onOpenUser} onOpenJob={onOpenJob} onOpenEngagement={onOpenEngagement} />
-  if (tab === 'engagements' && 'source' in record) return <EngagementDetail record={record as StaffEngagementDetail} onOpenUser={onOpenUser} onOpenJob={onOpenJob} onOpenService={onOpenService} onOpenApplication={onOpenApplication} onOpenDispute={onOpenDispute} onViewInvoice={onViewInvoice} onRetryInvoice={onRetryInvoice} onCloseEngagement={onCloseEngagement} onRecordFollowUp={onRecordFollowUp} />
+  if (tab === 'engagements' && 'source' in record) return <EngagementDetail record={record as StaffEngagementDetail} onOpenUser={onOpenUser} onOpenJob={onOpenJob} onOpenService={onOpenService} onOpenApplication={onOpenApplication} onOpenDispute={onOpenDispute} onViewInvoice={onViewInvoice} onRetryInvoice={onRetryInvoice} onCloseEngagement={onCloseEngagement} onCancelUnpaid={onCancelUnpaid} onRecordFollowUp={onRecordFollowUp} />
   return <p role="alert">That record is not available.</p>
 }
 
@@ -452,7 +454,7 @@ function ApplicationDetail({ record, onOpenUser, onOpenJob, onOpenEngagement }: 
   )
 }
 
-function EngagementDetail({ record, onOpenUser, onOpenJob, onOpenService, onOpenApplication, onOpenDispute, onViewInvoice, onRetryInvoice, onCloseEngagement, onRecordFollowUp }: {
+function EngagementDetail({ record, onOpenUser, onOpenJob, onOpenService, onOpenApplication, onOpenDispute, onViewInvoice, onRetryInvoice, onCloseEngagement, onCancelUnpaid, onRecordFollowUp }: {
   record: StaffEngagementDetail
   onOpenUser: (id: string) => void
   onOpenJob: (id: string) => void
@@ -462,19 +464,28 @@ function EngagementDetail({ record, onOpenUser, onOpenJob, onOpenService, onOpen
   onViewInvoice: (id: string) => Promise<{ url: string; originalFileName: string } | null>
   onRetryInvoice: (id: string) => Promise<InvoiceRetryResult>
   onCloseEngagement?: (input: EngagementCloseInput) => Promise<void>
+  onCancelUnpaid?: (input: UnpaidCancelInput) => Promise<UnpaidCancelResult>
   onRecordFollowUp?: (input: { outcome: 'no_real_funds' | 'simulated_exercise' | 'recorded_outside_provider'; note: string; idempotencyKey: string }) => Promise<void>
 }) {
+  const statusLabel = record.closedByMawahib
+    ? 'Closed by Mawahib'
+    : record.cancelledByMawahib
+      ? 'Cancelled by Mawahib'
+      : labelWord(record.status)
   return (
     <section className="demo-list">
-      <p>{record.closedByMawahib ? 'Closed by Mawahib' : labelWord(record.status)} · {labelWord(record.source)}{record.deletedAt ? ' · Deleted' : ''}</p>
+      <p>{statusLabel} · {labelWord(record.source)}{record.deletedAt ? ' · Deleted' : ''}</p>
       <p>Client: <Party party={record.client} onOpen={onOpenUser} /> · Provider: <Party party={record.provider} onOpen={onOpenUser} /></p>
       <Payment item={record.payment} />
       {record.listing ? <p><button type="button" onClick={() => onOpenJob(record.listing!.id)}>{record.listing.title}</button></p> : null}
       {record.serviceOffering ? <p><button type="button" onClick={() => onOpenService(record.serviceOffering!.id)}>{record.serviceOffering.title}</button></p> : null}
       {record.applicationId ? <p><button type="button" onClick={() => onOpenApplication(record.applicationId!)}>View application</button></p> : null}
       {record.disputeCaseId ? <p><button type="button" onClick={() => onOpenDispute(record.disputeCaseId!)}>View dispute</button></p> : null}
-      <h2>Invoices</h2>
+      <h2>Payment attempts</h2>
       <PaymentAttempts payments={record.payments} onViewInvoice={onViewInvoice} onRetryInvoice={onRetryInvoice} />
+      {record.cancelUnpaid?.available && onCancelUnpaid ? (
+        <UnpaidCancelForm title={record.title} onCancel={onCancelUnpaid} />
+      ) : record.cancelUnpaid?.blockedReason ? <p>{record.cancelUnpaid.blockedReason}</p> : null}
       {record.staffClosure ? <p>{financialFollowUpText(record.staffClosure.financialFollowUp.state)}</p> : null}
       {record.closeWork?.blockedReason ? <p>{record.closeWork.blockedReason}</p> : null}
       {record.closeWork?.route === 'dispute_case' && record.closeWork.openCaseId ? (
@@ -487,6 +498,53 @@ function EngagementDetail({ record, onOpenUser, onOpenJob, onOpenService, onOpen
         <FollowUpForm onRecord={onRecordFollowUp} />
       ) : null}
     </section>
+  )
+}
+
+type UnpaidCancelInput = {
+  reason: string
+  expectedEngagementStatus: 'pending_payment'
+  confirmedTitle: string
+  idempotencyKey: string
+}
+
+type UnpaidCancelResult = { ok: true } | { ok: false; message: string }
+
+function UnpaidCancelForm({ title, onCancel }: { title: string; onCancel: (input: UnpaidCancelInput) => Promise<UnpaidCancelResult> }) {
+  const [reason, setReason] = useState('')
+  const [confirmed, setConfirmed] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const key = useRef(crypto.randomUUID())
+  return (
+    <form className="case-form" onSubmit={(event) => {
+      event.preventDefault()
+      if (busy) return
+      if (reason.trim().length < 3 || !confirmed) {
+        setMessage('A reason and confirmation are required. This ends unpaid work and does not issue a refund.')
+        return
+      }
+      setBusy(true)
+      setMessage(null)
+      void onCancel({
+        reason,
+        expectedEngagementStatus: 'pending_payment',
+        confirmedTitle: title,
+        idempotencyKey: key.current,
+      }).then((result) => {
+        if (!result.ok) setMessage(result.message)
+      }).finally(() => setBusy(false))
+    }}>
+      <h2>Cancel accepted unpaid work</h2>
+      <p className="section-note">This ends “{title}” while it is still awaiting payment. It does not issue a refund.</p>
+      {message ? <p role="alert">{message}</p> : null}
+      <label>Staff reason<textarea value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} disabled={busy} /></label>
+      <label className="confirm-line"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} disabled={busy} /> Cancel this engagement as Cancelled by Mawahib.</label>
+      <button type="submit" disabled={busy} aria-busy={busy}>
+        {busy ? <ButtonSpinner /> : null}
+        Cancel accepted unpaid work
+      </button>
+    </form>
   )
 }
 
@@ -570,7 +628,7 @@ function PaymentAttempts({ payments, onViewInvoice, onRetryInvoice }: { payments
   const [notice, setNotice] = useState<string | null>(null)
   const [retryingId, setRetryingId] = useState<string | null>(null)
   const [readyIds, setReadyIds] = useState<Record<string, { status: string; hasDocument: boolean; issuedAt: string | null }>>({})
-  if (payments.length === 0) return <p>No invoice issued</p>
+  if (payments.length === 0) return <p>No payment attempts</p>
 
   async function retry(id: string) {
     if (retryingId) return
@@ -607,6 +665,9 @@ function PaymentAttempts({ payments, onViewInvoice, onRetryInvoice }: { payments
         <article key={payment.id} className="demo-panel">
           <p>Payment {payment.amount} {payment.currency} · {labelWord(payment.status)}</p>
           {payment.simulated ? <p>Simulated — no real payment</p> : null}
+          {typeof payment.referencedByProvider === 'boolean' ? (
+            <p>{payment.referencedByProvider ? 'Provider reference recorded' : 'No provider reference'}</p>
+          ) : null}
           {invoice ? (
             <>
               <p>Invoice {invoice.invoiceNumber}</p>

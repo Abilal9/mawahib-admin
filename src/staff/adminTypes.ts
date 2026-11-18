@@ -262,7 +262,7 @@ export type DeletionConfirmResult =
       kind: 'denied' | 'expired' | 'unavailable' | 'conflict'
       code?: string
       message?: string
-      blockers?: Array<{ engagementTitle?: string; explanation?: string }>
+      blockers?: Array<{ engagementId?: string; engagementTitle?: string; explanation?: string }>
     }
 
 export type AdminResult<T> =
@@ -303,6 +303,15 @@ export type AdminRecords = {
       financialFollowUpRequired: boolean
     },
   ): Promise<AdminResult<DisputeMutation>>
+  cancelUnpaidWork(
+    id: string,
+    input: {
+      reason: string
+      expectedEngagementStatus: 'pending_payment'
+      confirmedTitle: string
+      idempotencyKey: string
+    },
+  ): Promise<AdminResult<{ outcome: 'changed' | 'replayed'; cancellationId: string }>>
   closeEngagementWork(
     id: string,
     input: {
@@ -484,6 +493,7 @@ export type StaffPaymentAttempt = {
   currency: string
   status: string
   simulated: boolean
+  referencedByProvider?: boolean
   createdAt: string
   invoice: {
     id: string
@@ -517,6 +527,11 @@ export type StaffEngagementDetail = StaffEngagementListItem & {
   serviceOffering: { id: string; title: string; deleted: boolean } | null
   disputeCaseId: string | null
   payments: StaffPaymentAttempt[]
+  cancelledByMawahib?: boolean
+  cancelUnpaid?: {
+    available: boolean
+    blockedReason: string | null
+  }
   staffClosure?: {
     legacy: boolean
     financialFollowUp: { state: 'not_recorded' | 'not_required' | 'outstanding' | 'recorded' }

@@ -98,6 +98,9 @@ function records(partial: Partial<AdminRecords> = {}): AdminRecords {
     async closeWork() {
       return { ok: false as const, kind: 'conflict' as const }
     },
+    async cancelUnpaidWork() {
+      return { ok: false as const, kind: 'conflict' as const }
+    },
     async closeEngagementWork() {
       return { ok: false as const, kind: 'conflict' as const }
     },

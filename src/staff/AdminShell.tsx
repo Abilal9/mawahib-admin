@@ -354,7 +354,14 @@ export function AdminShell({
         </div>
       ) : null}
       {view.name === 'user' ? (
-        <UserDetail user={view.user} records={records} onAccessDenied={onAccessDenied} initialNotice={initialNotice} startConfirming={startConfirming} />
+        <UserDetail
+          user={view.user}
+          records={records}
+          onAccessDenied={onAccessDenied}
+          initialNotice={initialNotice}
+          startConfirming={startConfirming}
+          onOpenEngagement={(id) => open({ name: 'marketplace-detail', tab: 'engagements', id, returnTo: { ...EMPTY_MARKETPLACE, tab: 'engagements' } })}
+        />
       ) : null}
       {view.name === 'disputes' ? (
         <DisputeCaseList
@@ -444,6 +451,19 @@ export function AdminShell({
             if (view.tab !== 'engagements') return
             const result = await records.closeEngagementWork(view.id, input)
             if (result.ok) setReload((value) => value + 1)
+          }}
+          onCancelUnpaid={async (input) => {
+            if (view.tab !== 'engagements') return { ok: false, message: 'Open the engagement before cancelling it.' }
+            const result = await records.cancelUnpaidWork(view.id, input)
+            if (result.ok) {
+              setReload((value) => value + 1)
+              return { ok: true }
+            }
+            if (result.kind === 'denied') return { ok: false, message: 'Staff access is not active for this account.' }
+            if (result.kind === 'conflict') return { ok: false, message: 'This work changed. Refresh the engagement before trying again.' }
+            if (result.kind === 'uncertain') return { ok: false, message: 'The result is unknown. Submit again to retry the same request.' }
+            if (result.kind === 'invalid') return { ok: false, message: 'A reason and the engagement name are required.' }
+            return { ok: false, message: 'The staff service is temporarily unavailable. Try again.' }
           }}
           onRecordFollowUp={async (input) => {
             if (view.tab !== 'engagements') return
@@ -659,12 +679,14 @@ function ProductDeletion({
   deleted,
   records,
   onAccessDenied,
+  onOpenEngagement,
 }: {
   userId: string
   email: string
   deleted: boolean
   records: AdminRecords
   onAccessDenied?: () => void
+  onOpenEngagement?: (id: string) => void
 }) {
   const reasonId = useId()
   const emailId = useId()
@@ -673,6 +695,7 @@ function ProductDeletion({
   const [confirmedEmail, setConfirmedEmail] = useState('')
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [blockers, setBlockers] = useState<Array<{ engagementId?: string; engagementTitle?: string; explanation?: string }>>([])
 
   useEffect(() => {
     let active = true
@@ -706,10 +729,11 @@ function ProductDeletion({
       return
     }
     if (!result.ok) {
-      const blockers = result.blockers?.map((item) => item.explanation).filter(Boolean).join(' ')
-      setNotice(blockers || result.message || 'Deletion was not confirmed.')
+      setBlockers(result.blockers ?? [])
+      setNotice(result.blockers?.length ? 'Deletion was not confirmed.' : result.message || 'Deletion was not confirmed.')
       return
     }
+    setBlockers([])
     setNotice(result.data.outcome === 'replayed' ? 'Deletion is already processing.' : 'Deletion is processing. This account cannot be restored.')
     setReason('')
     setConfirmedEmail('')
@@ -754,6 +778,19 @@ function ProductDeletion({
         </article>
       ))}
       {status.hasCompletionDestination ? <p>A completion address is retained until the mail window ends. Mail acceptance is not proof it was read.</p> : null}
+      {blockers.map((item, index) => (
+        <p key={`${item.engagementId ?? 'blocker'}-${index}`}>
+          {item.explanation}
+          {item.engagementId && onOpenEngagement ? (
+            <>
+              {' '}
+              <button type="button" onClick={() => onOpenEngagement(item.engagementId!)}>
+                Open {item.engagementTitle || 'engagement'}
+              </button>
+            </>
+          ) : null}
+        </p>
+      ))}
       {notice ? <p role="status">{notice}</p> : null}
     </section>
   )
@@ -765,12 +802,14 @@ function UserDetail({
   onAccessDenied,
   initialNotice = null,
   startConfirming = false,
+  onOpenEngagement,
 }: {
   user: StaffUserDetail
   records: AdminRecords
   onAccessDenied?: () => void
   initialNotice?: string | null
   startConfirming?: boolean
+  onOpenEngagement?: (id: string) => void
 }) {
   const reasonId = useId()
   const [current, setCurrent] = useState(user)
@@ -902,7 +941,7 @@ function UserDetail({
           </div>
         )
       ) : null}
-      <ProductDeletion userId={current.id} email={current.email} deleted={Boolean(current.deletedAt)} records={records} onAccessDenied={onAccessDenied} />
+      <ProductDeletion userId={current.id} email={current.email} deleted={Boolean(current.deletedAt)} records={records} onAccessDenied={onAccessDenied} onOpenEngagement={onOpenEngagement} />
       {message && !confirming ? <p role="status">{message}</p> : null}
       <h2>Account actions</h2>
       {history.length === 0 ? <p>No account actions are recorded.</p> : null}

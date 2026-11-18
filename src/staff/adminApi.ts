@@ -87,7 +87,7 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
           status?: 'processing'
           code?: string
           message?: string
-          blockers?: Array<{ engagementTitle?: string; explanation?: string }>
+          blockers?: Array<{ engagementId?: string; engagementTitle?: string; explanation?: string }>
         } | null
         if (response.ok && body?.status === 'processing') {
           return { ok: true, data: { outcome: body.outcome === 'replayed' ? 'replayed' : 'closed', status: 'processing' } }
@@ -151,6 +151,9 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
       financialFollowUpRequired: boolean
     }) {
       return post<DisputeMutation>(`/admin/dispute-cases/${encodeURIComponent(id)}/close-work`, input)
+    },
+    cancelUnpaidWork(id, input) {
+      return post<{ outcome: 'changed' | 'replayed'; cancellationId: string }>(`/admin/engagements/${encodeURIComponent(id)}/cancel-unpaid`, input)
     },
     closeEngagementWork(id, input) {
       return post<{ outcome: 'changed' | 'replayed'; closureId: string }>(`/admin/engagements/${encodeURIComponent(id)}/close-work`, input)
