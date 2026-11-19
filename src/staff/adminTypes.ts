@@ -354,6 +354,8 @@ export type AdminRecords = {
   paymentAttempts(query: PaymentsQuery): Promise<AdminResult<StaffPaymentLedgerPage>>
   financialFollowUps(query: Pick<PaymentsQuery, 'followStates' | 'followCursor'>): Promise<AdminResult<StaffFollowUpPage>>
   growth(period: 7 | 30): Promise<AdminResult<GrowthSnapshot>>
+  staffMembers(query: Pick<StaffQuery, 'directoryCursor'>): Promise<AdminResult<StaffDirectoryPage>>
+  staffAudit(query: StaffQuery): Promise<AdminResult<StaffAuditPage>>
 }
 
 export type InvoiceRetryResult =
@@ -375,17 +377,17 @@ export type InvoiceRetryResult =
 export type AdminRoute =
   | { name: 'home' }
   | { name: 'users'; query: string; cursor: string | null }
-  | { name: 'user'; id: string; returnTo?: PaymentsQuery }
+  | { name: 'user'; id: string; returnTo?: PaymentsQuery | StaffQuery }
   | ({ name: 'disputes' } & DisputeCaseQuery)
   | { name: 'dispute'; id: string; returnTo: DisputeCaseQuery }
   | { name: 'operations' }
   | ({ name: 'reports' } & ReportListQuery)
-  | { name: 'report'; id: string; returnTo: ReportListQuery }
+  | { name: 'report'; id: string; returnTo: ReportListQuery | StaffQuery }
   | ({ name: 'marketplace' } & MarketplaceQuery)
-  | { name: 'marketplace-detail'; tab: MarketplaceTab; id: string; returnTo: MarketplaceQuery | PaymentsQuery }
+  | { name: 'marketplace-detail'; tab: MarketplaceTab; id: string; returnTo: MarketplaceQuery | PaymentsQuery | StaffQuery }
   | ({ name: 'payments' } & PaymentsQuery)
   | { name: 'growth'; period: 7 | 30 }
-  | { name: 'staff' }
+  | ({ name: 'staff' } & StaffQuery)
 
 export type GrowthSnapshot = {
   asOf: string
@@ -419,6 +421,61 @@ export type PaymentsQuery = {
   cursor: string | null
   followStates: string[]
   followCursor: string | null
+}
+
+export type StaffQuery = {
+  q: string
+  groups: string[]
+  cursor: string | null
+  directoryCursor: string | null
+}
+
+export const EMPTY_STAFF: StaffQuery = {
+  q: '',
+  groups: [],
+  cursor: null,
+  directoryCursor: null,
+}
+
+export type StaffDirectoryMember = {
+  id: string
+  invitedEmail: string | null
+  role: string
+  status: string
+  createdAt: string
+  updatedAt: string
+  linkedAccount: { id: string; displayName: string; deleted: boolean } | null
+}
+
+export type StaffDirectoryPage = {
+  items: StaffDirectoryMember[]
+  nextCursor: string | null
+  total: number
+}
+
+export type StaffAuditItem = {
+  id: string
+  action: string
+  actionLabel: string
+  createdAt: string
+  actor:
+    | { kind: 'staff'; label: string | null; membershipStatus: string }
+    | { kind: 'command'; label: 'Operator command' }
+    | { kind: 'unknown'; label: 'Actor unavailable' }
+  reason: string | null
+  target: {
+    kind: string
+    id: string
+    hasDetailScreen: boolean
+    presence: 'retained' | 'deleted' | 'missing'
+  }
+}
+
+export type StaffAuditPage = {
+  items: StaffAuditItem[]
+  nextCursor: string | null
+  total: number
+  matchCount: number
 }
 
 export const EMPTY_PAYMENTS: PaymentsQuery = {

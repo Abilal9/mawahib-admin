@@ -383,6 +383,23 @@ button:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.staff-page {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.staff-page .record,
+.staff-page .record p,
+.staff-page .record h3 {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.staff-page .record button {
+  min-height: 44px;
+  max-width: 100%;
+}
+
 @media (min-width: 720px) {
   .growth-page .growth-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));

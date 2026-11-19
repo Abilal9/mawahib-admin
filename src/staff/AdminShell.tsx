@@ -6,12 +6,13 @@ import { OPERATIONS_POLL_MS, OperationsView } from './OperationsView'
 import { ReportDetail, ReportsList } from './ReportsView'
 import { ButtonSpinner, LoadingIndicator } from './LoadingIndicator'
 import { PortalFrame, type PortalSection } from '../portal/PortalFrame'
-import { EMPTY_MARKETPLACE, EMPTY_PAYMENTS, type GrowthSnapshot, type MarketplaceQuery, type MarketplaceTab, type PaymentsQuery, type StaffApplicationDetail, type StaffApplicationListItem, type StaffEngagementDetail, type StaffEngagementListItem, type StaffFollowUpPage, type StaffJobDetail, type StaffJobListItem, type StaffPaymentLedgerPage, type StaffServiceDetail, type StaffServiceListItem } from './adminTypes'
+import { EMPTY_MARKETPLACE, EMPTY_PAYMENTS, EMPTY_STAFF, type GrowthSnapshot, type MarketplaceQuery, type MarketplaceTab, type PaymentsQuery, type StaffApplicationDetail, type StaffApplicationListItem, type StaffAuditPage, type StaffDirectoryPage, type StaffEngagementDetail, type StaffEngagementListItem, type StaffFollowUpPage, type StaffJobDetail, type StaffJobListItem, type StaffPaymentLedgerPage, type StaffQuery, type StaffServiceDetail, type StaffServiceListItem } from './adminTypes'
 import { MarketplaceDetail, MarketplaceList, type MarketplacePhase } from './MarketplaceView'
 import { PaymentsView } from './PaymentsView'
 import { GrowthView } from './GrowthView'
+import { StaffView } from './StaffView'
 
-type PlaceholderSection = 'marketplace' | 'staff'
+type PlaceholderSection = 'marketplace'
 
 type View =
   | { name: 'loading' }
@@ -22,11 +23,12 @@ type View =
   | { name: 'dispute'; id: string; returnTo: DisputeCaseQuery; record: DisputeCaseDetail | null; phase: 'loading' | 'ready' | 'unavailable' | 'denied' | 'expired' | 'missing' | 'conflict'; notice: string | null }
   | { name: 'operations'; overview: OperationsOverview }
   | { name: 'reports'; statuses: ReportListQuery['statuses']; targetTypes: ReportListQuery['targetTypes']; exactTarget: ReportListQuery['exactTarget']; items: StaffReportSummary[]; nextCursor: string | null; matchCount: number | null; phase: 'loading' | 'ready' | 'unavailable' | 'denied' | 'expired' }
-  | { name: 'report'; report: StaffReportDetail; returnTo: ReportListQuery }
+  | { name: 'report'; report: StaffReportDetail; returnTo: ReportListQuery | StaffQuery }
   | { name: 'marketplace'; query: MarketplaceQuery; items: Array<StaffJobListItem | StaffServiceListItem | StaffApplicationListItem | StaffEngagementListItem>; nextCursor: string | null; total: number | null; matchCount: number | null; phase: MarketplacePhase }
-  | { name: 'marketplace-detail'; tab: MarketplaceTab; id: string; returnTo: MarketplaceQuery | PaymentsQuery; record: StaffJobDetail | StaffServiceDetail | StaffApplicationDetail | StaffEngagementDetail | null; phase: MarketplacePhase }
+  | { name: 'marketplace-detail'; tab: MarketplaceTab; id: string; returnTo: MarketplaceQuery | PaymentsQuery | StaffQuery; record: StaffJobDetail | StaffServiceDetail | StaffApplicationDetail | StaffEngagementDetail | null; phase: MarketplacePhase }
   | { name: 'payments'; query: PaymentsQuery; attempts: StaffPaymentLedgerPage | null; followUps: StaffFollowUpPage | null; phase: 'loading' | 'ready' | 'unavailable' | 'denied' | 'expired' }
   | { name: 'growth'; period: 7 | 30; snapshot: GrowthSnapshot | null; phase: 'loading' | 'ready' | 'unavailable' | 'denied' | 'expired' }
+  | { name: 'staff'; query: StaffQuery; directory: StaffDirectoryPage | null; audit: StaffAuditPage | null; phase: 'loading' | 'ready' | 'unavailable' | 'denied' | 'expired' }
   | { name: 'placeholder'; section: PlaceholderSection }
   | { name: 'empty'; message: string }
   | { name: 'denied' }
@@ -92,6 +94,8 @@ export function AdminShell({
       })
     } else if (route.name === 'growth') {
       setView({ name: 'growth', period: route.period, snapshot: null, phase: 'loading' })
+    } else if (route.name === 'staff') {
+      setView({ name: 'staff', query: staffQuery(route), directory: null, audit: null, phase: 'loading' })
     } else if (route.name === 'payments') {
       setView({
         name: 'payments',
@@ -138,7 +142,7 @@ export function AdminShell({
         return
       }
       if (next.name === 'reports' && (next.phase === 'denied' || next.phase === 'expired') && onAccessDenied) onAccessDenied()
-      if ((next.name === 'marketplace' || next.name === 'marketplace-detail' || next.name === 'disputes' || next.name === 'dispute' || next.name === 'payments' || next.name === 'growth') && (next.phase === 'denied' || next.phase === 'expired') && onAccessDenied) onAccessDenied()
+      if ((next.name === 'marketplace' || next.name === 'marketplace-detail' || next.name === 'disputes' || next.name === 'dispute' || next.name === 'payments' || next.name === 'growth' || next.name === 'staff') && (next.phase === 'denied' || next.phase === 'expired') && onAccessDenied) onAccessDenied()
       setView(next)
     })
     return () => {
@@ -448,7 +452,7 @@ export function AdminShell({
           tab={view.tab}
           record={view.record}
           phase={view.phase}
-          onOpenUser={(id) => open(isPaymentsQuery(view.returnTo) ? { name: 'user', id, returnTo: view.returnTo } : { name: 'user', id })}
+          onOpenUser={(id) => open(detailReturn(view.returnTo, id))}
           onOpenJob={(id) => open({ name: 'marketplace-detail', tab: 'jobs', id, returnTo: view.returnTo })}
           onOpenService={(id) => open({ name: 'marketplace-detail', tab: 'services', id, returnTo: view.returnTo })}
           onOpenApplication={(id) => open({ name: 'marketplace-detail', tab: 'applications', id, returnTo: view.returnTo })}
@@ -486,6 +490,20 @@ export function AdminShell({
           }}
         />
       ) : null}
+      {view.name === 'staff' ? (
+        <StaffView
+          query={view.query}
+          directory={view.directory}
+          audit={view.audit}
+          phase={view.phase}
+          onChange={(next) => open({ name: 'staff', ...next })}
+          onOpenAccount={(id) => open({ name: 'user', id, returnTo: view.query })}
+          onOpenReport={(id) => open({ name: 'report', id, returnTo: view.query })}
+          onOpenJob={(id) => open({ name: 'marketplace-detail', tab: 'jobs', id, returnTo: view.query })}
+          onOpenService={(id) => open({ name: 'marketplace-detail', tab: 'services', id, returnTo: view.query })}
+          onOpenEngagement={(id) => open({ name: 'marketplace-detail', tab: 'engagements', id, returnTo: view.query })}
+        />
+      ) : null}
       {view.name === 'growth' ? (
         <GrowthView
           period={view.period}
@@ -518,8 +536,8 @@ export function AdminShell({
           onOpenAccount={(id) => open({ name: 'user', id })}
           onRelated={() => open({
             name: 'reports',
-            statuses: view.returnTo.statuses,
-            targetTypes: view.returnTo.targetTypes,
+            statuses: 'statuses' in view.returnTo ? view.returnTo.statuses : [],
+            targetTypes: 'targetTypes' in view.returnTo ? view.returnTo.targetTypes : [],
             exactTarget: { targetType: view.report.targetType, targetId: view.report.targetId },
             cursor: null,
           })}
@@ -538,15 +556,19 @@ function navigateSection(section: PortalSection): AdminRoute {
   if (section === 'marketplace') return { name: 'marketplace', ...EMPTY_MARKETPLACE }
   if (section === 'payments') return { name: 'payments', ...EMPTY_PAYMENTS }
   if (section === 'growth') return { name: 'growth', period: 7 }
-  return { name: section }
+  if (section === 'staff') return { name: 'staff', ...EMPTY_STAFF }
+  return { name: 'home' }
 }
 
 function sectionFor(route: AdminRoute): PortalSection {
   if (route.name === 'home') return 'overview'
+  if (route.name === 'user' && route.returnTo && isStaffQuery(route.returnTo)) return 'staff'
   if (route.name === 'user' && route.returnTo) return 'payments'
   if (route.name === 'user') return 'users'
   if (route.name === 'dispute') return 'disputes'
+  if (route.name === 'report' && isStaffQuery(route.returnTo)) return 'staff'
   if (route.name === 'report') return 'reports'
+  if (route.name === 'marketplace-detail' && isStaffQuery(route.returnTo)) return 'staff'
   if (route.name === 'marketplace-detail' && isPaymentsQuery(route.returnTo)) return 'payments'
   if (route.name === 'marketplace' || route.name === 'marketplace-detail') return 'marketplace'
   if (route.name === 'payments' || route.name === 'staff' || route.name === 'growth') return route.name
@@ -678,7 +700,6 @@ function monitoringHeadline(overview: OperationsOverview | null): { value: strin
 function Placeholder({ section }: { section: PlaceholderSection }) {
   const copy = {
     marketplace: 'Marketplace oversight is not connected. Jobs, services, applications, and engagements will appear here when that API exists.',
-    staff: 'Staff invitations and activation stay on operator commands. This screen does not invite, activate, or hold credentials.',
   }[section]
   return <p className="demo-panel">{copy}</p>
 }
@@ -1009,10 +1030,16 @@ function accountStatusMessage(result: { outcome: 'changed' | 'unchanged' | 'obse
 }
 
 function backRoute(route: AdminRoute): AdminRoute {
-  if (route.name === 'user') return route.returnTo ? { name: 'payments', ...route.returnTo } : { name: 'users', query: '', cursor: null }
+  if (route.name === 'user') {
+    if (route.returnTo && isStaffQuery(route.returnTo)) return { name: 'staff', ...route.returnTo }
+    return route.returnTo ? { name: 'payments', ...route.returnTo } : { name: 'users', query: '', cursor: null }
+  }
   if (route.name === 'dispute') return { name: 'disputes', ...route.returnTo }
-  if (route.name === 'report') return { name: 'reports', ...route.returnTo }
+  if (route.name === 'report') {
+    return isStaffQuery(route.returnTo) ? { name: 'staff', ...route.returnTo } : { name: 'reports', ...route.returnTo }
+  }
   if (route.name === 'marketplace-detail') {
+    if (isStaffQuery(route.returnTo)) return { name: 'staff', ...route.returnTo }
     return isPaymentsQuery(route.returnTo)
       ? { name: 'payments', ...route.returnTo }
       : { name: 'marketplace', ...route.returnTo }
@@ -1027,9 +1054,7 @@ function formatWhen(value: string): string {
 }
 
 async function load(records: AdminRecords, route: AdminRoute): Promise<View> {
-  if (route.name === 'staff') {
-    return { name: 'placeholder', section: route.name }
-  }
+  if (route.name === 'staff') return loadStaff(records, route)
   if (route.name === 'payments') return loadPayments(records, route)
   if (route.name === 'growth') return loadGrowth(records, route.period)
   if (route.name === 'home') {
@@ -1179,8 +1204,41 @@ function paymentsQuery(route: PaymentsQuery): PaymentsQuery {
   }
 }
 
-function isPaymentsQuery(value: MarketplaceQuery | PaymentsQuery): value is PaymentsQuery {
+function isPaymentsQuery(value: MarketplaceQuery | PaymentsQuery | StaffQuery): value is PaymentsQuery {
   return 'followStates' in value
+}
+
+function isStaffQuery(value: MarketplaceQuery | PaymentsQuery | StaffQuery | ReportListQuery): value is StaffQuery {
+  return 'groups' in value
+}
+
+function staffQuery(route: StaffQuery): StaffQuery {
+  return { q: route.q, groups: route.groups, cursor: route.cursor, directoryCursor: route.directoryCursor }
+}
+
+function detailReturn(returnTo: MarketplaceQuery | PaymentsQuery | StaffQuery, id: string): AdminRoute {
+  if (isStaffQuery(returnTo)) return { name: 'user', id, returnTo }
+  if (isPaymentsQuery(returnTo)) return { name: 'user', id, returnTo }
+  return { name: 'user', id }
+}
+
+async function loadStaff(records: AdminRecords, route: StaffQuery & { name: 'staff' }): Promise<View> {
+  const query = staffQuery(route)
+  const [directory, audit] = await Promise.all([
+    records.staffMembers(query),
+    records.staffAudit(query),
+  ])
+  const denied = [directory, audit].find((result) => !result.ok && (result.kind === 'denied' || result.kind === 'expired'))
+  if (denied && !denied.ok) {
+    return { name: 'staff', query, directory: null, audit: null, phase: denied.kind === 'expired' ? 'expired' : 'denied' }
+  }
+  return {
+    name: 'staff',
+    query,
+    directory: directory.ok ? directory.data : null,
+    audit: audit.ok ? audit.data : null,
+    phase: 'ready',
+  }
 }
 
 async function loadGrowth(records: AdminRecords, period: 7 | 30): Promise<View> {
@@ -1204,7 +1262,7 @@ async function loadPayments(records: AdminRecords, route: PaymentsQuery & { name
   return { name: 'payments', query, attempts: attempts.data, followUps: followUps.data, phase: 'ready' }
 }
 
-async function loadMarketplaceDetail(records: AdminRecords, route: { tab: MarketplaceTab; id: string; returnTo: MarketplaceQuery | PaymentsQuery }): Promise<View> {
+async function loadMarketplaceDetail(records: AdminRecords, route: { tab: MarketplaceTab; id: string; returnTo: MarketplaceQuery | PaymentsQuery | StaffQuery }): Promise<View> {
   const result = route.tab === 'jobs'
     ? await records.job(route.id)
     : route.tab === 'services'

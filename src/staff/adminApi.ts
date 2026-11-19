@@ -257,6 +257,20 @@ export function createAdminRecords(apiBaseUrl: string, readAccessToken: () => Pr
     growth(period) {
       return get(`/admin/growth?period=${period}`)
     },
+    staffMembers(query) {
+      const params = new URLSearchParams()
+      if (query.directoryCursor) params.set('cursor', query.directoryCursor)
+      const suffix = params.size > 0 ? `?${params.toString()}` : ''
+      return get(`/admin/staff-members${suffix}`)
+    },
+    staffAudit(query) {
+      const params = new URLSearchParams()
+      if (query.q.trim()) params.set('q', query.q.trim())
+      if (query.groups.length > 0) params.set('group', query.groups.join(','))
+      if (query.cursor) params.set('cursor', query.cursor)
+      const suffix = params.size > 0 ? `?${params.toString()}` : ''
+      return get(`/admin/staff-audit${suffix}`)
+    },
     financialFollowUps(query) {
       const params = new URLSearchParams()
       if (query.followStates.length > 0) params.set('followState', query.followStates.join(','))

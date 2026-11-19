@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AdminShell } from './AdminShell'
-import { EMPTY_DISPUTES, EMPTY_MARKETPLACE, EMPTY_PAYMENTS, type AdminRecords, type OperationsOverview, type StaffUserSummary } from './adminTypes'
+import { EMPTY_DISPUTES, EMPTY_MARKETPLACE, EMPTY_PAYMENTS, EMPTY_STAFF, type AdminRecords, type OperationsOverview, type StaffAuditPage, type StaffDirectoryPage, type StaffUserSummary } from './adminTypes'
 import { OPERATIONS_POLL_MS } from './OperationsView'
 
 const user: StaffUserSummary = {
@@ -116,6 +116,12 @@ function records(partial: Partial<AdminRecords> = {}): AdminRecords {
     async growth() {
       return { ok: false as const, kind: 'unavailable' as const }
     },
+    async staffMembers() {
+      return { ok: true as const, data: emptyDirectory() }
+    },
+    async staffAudit() {
+      return { ok: true as const, data: emptyAudit() }
+    },
     async operations() {
       return { ok: true, data: operationsOverview() }
     },
@@ -169,6 +175,14 @@ function records(partial: Partial<AdminRecords> = {}): AdminRecords {
     },
     ...partial,
   }
+}
+
+function emptyDirectory(): StaffDirectoryPage {
+  return { items: [], nextCursor: null, total: 0 }
+}
+
+function emptyAudit(): StaffAuditPage {
+  return { items: [], nextCursor: null, total: 0, matchCount: 0 }
 }
 
 function operationsOverview(patch: Partial<OperationsOverview['cards'][number]>[] = []): OperationsOverview {
@@ -1085,6 +1099,136 @@ describe('AdminShell', () => {
     expect(screen.queryByText(/Payment and invoice lists are not connected/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Staff' }))
     expect(await screen.findByText(/operator commands/)).toBeTruthy()
+  })
+
+  it('keeps Staff in place while loading, shows unavailable instead of zero, and returns to the same audit filters', async () => {
+    const deletedId = '33333333-3333-4333-8333-333333333333'
+    const jobId = '44444444-4444-4444-8444-444444444444'
+    let finishFirst: (value: { ok: true; data: StaffAuditPage }) => void = () => undefined
+    const audit = (label: string): StaffAuditPage => ({
+      items: [{
+        id: '55555555-5555-4555-8555-555555555555',
+        action: 'job_hidden',
+        actionLabel: label,
+        createdAt: '2026-11-18T09:00:00.000Z',
+        actor: { kind: 'staff', label: 'operator@example.com', membershipStatus: 'inactive' },
+        reason: '<b>plain</b>',
+        target: { kind: 'job', id: jobId, hasDetailScreen: true, presence: 'deleted' },
+      }, {
+        id: '66666666-6666-4666-8666-666666666666',
+        action: 'invoice_retried',
+        actionLabel: 'Invoice retry requested',
+        createdAt: '2026-11-18T09:00:00.000Z',
+        actor: { kind: 'unknown', label: 'Actor unavailable' },
+        reason: null,
+        target: { kind: 'invoice', id: '77777777-7777-4777-8777-777777777777', hasDetailScreen: false, presence: 'missing' },
+      }],
+      nextCursor: null,
+      total: 4,
+      matchCount: 2,
+    })
+    render(
+      <AdminShell
+        records={records({
+          async staffMembers() {
+            return {
+              ok: true,
+              data: {
+                items: [{
+                  id: '88888888-8888-4888-8888-888888888888',
+                  invitedEmail: 'pending@staff.example',
+                  role: 'operator',
+                  status: 'pending',
+                  createdAt: '2026-11-01T00:00:00.000Z',
+                  updatedAt: '2026-11-02T00:00:00.000Z',
+                  linkedAccount: { id: deletedId, displayName: 'Deleted user', deleted: true },
+                }],
+                nextCursor: null,
+                total: 1,
+              },
+            }
+          },
+          async staffAudit(query) {
+            if (query.q === 'stale') return new Promise((resolve) => { finishFirst = resolve })
+            if (query.groups.includes('invoices')) return { ok: false as const, kind: 'unavailable' as const }
+            return { ok: true as const, data: audit('Job hidden') }
+          },
+          async user() {
+            return {
+              ok: true,
+              data: {
+                ...user,
+                id: deletedId,
+                displayName: 'Deleted user',
+                deletedAt: '2026-11-18T09:00:00.000Z',
+                followersCount: 0,
+                followingCount: 0,
+                postsCount: 0,
+                clientEngagementCount: 0,
+                providerEngagementCount: 0,
+                simulatedPaymentCount: 0,
+                statusAction: 'deleted',
+              },
+            }
+          },
+          async job() {
+            return {
+              ok: true as const,
+              data: {
+                id: jobId,
+                title: 'Retained job',
+                companyName: null,
+                status: 'open',
+                employmentType: 'freelance',
+                poster: { id: user.id, displayName: 'Ada Preview', deleted: false },
+                applicationCount: 0,
+                postedAt: null,
+                createdAt: '2026-11-18T09:00:00.000Z',
+                deletedAt: '2026-11-18T09:00:00.000Z',
+                location: 'Riyadh',
+                updatedAt: '2026-11-18T09:00:00.000Z',
+                category: null,
+                customCategory: null,
+                pricing: { type: 'fixed', currency: 'SAR', fixedAmount: null, minAmount: null, maxAmount: null },
+                engagementCount: 0,
+                engagements: [],
+              },
+            }
+          },
+        })}
+        initialRoute={{ name: 'staff', ...EMPTY_STAFF, q: 'stale' }}
+        onSignOut={() => undefined}
+      />,
+    )
+    expect(await screen.findByRole('heading', { name: 'Staff' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'All actions' })).toBeTruthy()
+    expect(screen.getByLabelText('Loading staff directory')).toBeTruthy()
+    expect(screen.getByLabelText('Loading staff audit')).toBeTruthy()
+    expect(screen.getByText(/operator commands/)).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+    expect(await screen.findByText('Invited email')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Deleted user (deleted)' })).toBeTruthy()
+    expect(screen.getByText('<b>plain</b>')).toBeTruthy()
+    expect(screen.queryByRole('img')).toBeNull()
+    expect(screen.getByText('Actor unavailable')).toBeTruthy()
+    expect(screen.getByText('No reason recorded')).toBeTruthy()
+    expect(screen.getByText('Matching events: 2')).toBeTruthy()
+    expect(screen.getByText('No longer available. No standalone detail screen.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Open job (deleted)' }))
+    expect(await screen.findByText(/Riyadh/)).toBeTruthy()
+    expect(screen.getByText(/Deleted/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(await screen.findByText('Job hidden')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Staff' }).getAttribute('aria-current')).toBe('page')
+    fireEvent.click(screen.getByRole('button', { name: 'All actions' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Invoices' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    expect(await screen.findByText('Staff audit is unavailable.')).toBeTruthy()
+    expect(screen.queryByText('Matching events: 0')).toBeNull()
+    finishFirst({ ok: true, data: audit('Stale hidden') })
+    await act(async () => { await Promise.resolve() })
+    expect(screen.queryByText('Stale hidden')).toBeNull()
   })
 
   it('keeps the Payments title and filters visible while the lists load', async () => {

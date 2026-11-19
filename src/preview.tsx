@@ -362,6 +362,12 @@ function previewRecords(mode: string): AdminRecords {
     async growth() {
       return { ok: false, kind: 'unavailable' }
     },
+    async staffMembers() {
+      return { ok: true, data: { items: [], nextCursor: null, total: 0 } }
+    },
+    async staffAudit() {
+      return { ok: true, data: { items: [], nextCursor: null, total: 0, matchCount: 0 } }
+    },
     async operations() {
       if (mode === 'operations-denied') return { ok: false, kind: 'denied' }
       return { ok: true, data: previewOperations(mode) }
